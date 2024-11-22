@@ -151,7 +151,7 @@ function UnitFramesImproved:UnitColor(unit)
   elseif (UnitIsPlayer(unit)) then
     --Try to color it by class.
     local localizedClass, englishClass = UnitClass(unit)
-    local classColor = RAID_CLASS_COLORS[englishClass]
+    local classColor = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[englishClass]
     if (classColor) then
       r, g, b = classColor.r, classColor.g, classColor.b
     else
