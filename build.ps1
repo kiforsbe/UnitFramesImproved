@@ -203,6 +203,28 @@ $SourceItems = @(
     'README.md'
 )
 
+# Guards the wipe in Deploy-Addon below: refuses unless the target both looks like a
+# WoW AddOns folder for this addon specifically, AND every entry already in it is one
+# our own deploy could have produced. A -TargetPath typo or a Deploy-Addon caller bug
+# pointing this at, say, a Documents folder must not turn into a silent recursive delete.
+function Assert-SafeToWipe {
+    param([string]$Target)
+
+    if (-not (Test-Path $Target)) {
+        return
+    }
+
+    if ($Target -notmatch '\\Interface\\AddOns\\UnitFramesImproved\\?$') {
+        throw "Refusing to wipe '$Target' - doesn't look like a WoW AddOns folder (expected it to end in '...\Interface\AddOns\UnitFramesImproved')."
+    }
+
+    $knownEntries = @($SourceItems) + 'Libs'
+    $unexpected = Get-ChildItem $Target -Name | Where-Object { $_ -notin $knownEntries }
+    if ($unexpected) {
+        throw "Refusing to wipe '$Target' - it contains entries this script doesn't recognize as part of the addon: $($unexpected -join ', '). Remove them by hand first if that's intentional, in case they're not meant to be deleted."
+    }
+}
+
 function Deploy-Addon {
     param([string]$Target)
 
@@ -211,6 +233,7 @@ function Deploy-Addon {
     # Wipe first so files removed/renamed on the source side (or left over from an
     # older, unrelated copy of the addon) don't linger next to the current build.
     if (Test-Path $Target) {
+        Assert-SafeToWipe -Target $Target
         Remove-Item $Target -Recurse -Force
     }
     New-Item -ItemType Directory -Force -Path $Target | Out-Null
