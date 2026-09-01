@@ -188,6 +188,24 @@ function UnitFramesImproved:AbbreviateLargeNumbers(value)
   return retString
 end
 
+-- Anchors `region` at a fixed (dx,dy) offset from its OWN first-ever observed
+-- anchor, cached on the region itself, rather than re-reading GetPoint() and
+-- re-adding the offset on every call. Style_TargetFrame runs on every target
+-- switch and Blizzard never resets TargetFrameHealthBar's anchor between switches
+-- (unlike PlayerFrame, which Blizzard resets every PLAYER_ENTERING_WORLD) - reading
+-- our own last result and adding the offset again would drift further with every
+-- retarget. ClearAllPoints first because Blizzard's default template can anchor
+-- both corners at once; GetPoint() only reports one of them.
+function UnitFramesImproved:OffsetAnchor(region, dx, dy)
+  if (not region.ufiBaseAnchor) then
+    local point, relativeTo, relativePoint, xOfs, yOfs = region:GetPoint()
+    region.ufiBaseAnchor = { point, relativeTo, relativePoint, xOfs, yOfs }
+  end
+  local base = region.ufiBaseAnchor
+  region:ClearAllPoints()
+  region:SetPoint(base[1], base[2], base[3], base[4] + dx, base[5] + dy)
+end
+
 function UnitFramesImproved:CreateStatusBarText(name, parentName, parent, point, x, y)
 	local fontString = parent:CreateFontString(parentName..name, nil, "TextStatusBarText")
 	fontString:SetPoint(point, parent, point, x, y)
