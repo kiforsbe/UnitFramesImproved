@@ -1,7 +1,8 @@
 # Architecture
 
 Technical reference for how UnitFramesImproved is put together. See [README.md](README.md) for
-what the addon does and how to build it; this document is about how the code is structured and why.
+what the addon does and [DEVELOPMENT.md](DEVELOPMENT.md) for how to build/release it; this
+document is about how the code is structured and why.
 
 ## Design goal
 

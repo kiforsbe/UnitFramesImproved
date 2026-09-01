@@ -14,3 +14,4 @@ ignore:
   - build.ps1
   - deploy
   - ARCHITECTURE.md
+  - DEVELOPMENT.md

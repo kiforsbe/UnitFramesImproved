@@ -9,8 +9,9 @@
 
 ## Title: UnitFramesImproved
 ## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
+## IconTexture: Interface\Icons\Spell_Nature_HealingTouch
 ## Version: @project-version@
-## Author: Althalla (Kim Forsberg)
+## Author: kiforsbe / KawF
 ## OptionalDeps: LibStub, Ace3
 
 ## Category: Unit Frames

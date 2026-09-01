@@ -39,12 +39,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/workflows/release.yml`: manually-triggerable (Actions tab -> Run workflow) packaging and
   CurseForge publishing via the `BigWigsMods/packager` action, which also attaches the built zip to
   a matching GitHub release using this changelog as the release notes.
+- `IconTexture` metadata in all three TOC files, so the addon shows an icon in the in-game AddOns
+  list instead of the default blank/placeholder icon.
 
 ### Changed
 - Debug "Loading config... / Config loaded." messages now only print on the very first load, not on
   every zone transition or post-combat re-application.
 - `UnitFramesImproved_UpdateTextStringWithValues` moved off the global namespace onto
   `UnitFramesImproved.UpdateTextStringWithValues`.
+- `README.md` rewritten for players only, in the style of the CurseForge listing description;
+  build/release instructions moved to the new `DEVELOPMENT.md`.
+- Addon author metadata updated to kiforsbe / KawF.
 
 ## [3.0.0-universal] - 2024-08-24
 ### Added
