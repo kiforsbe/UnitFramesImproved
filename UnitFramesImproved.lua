@@ -165,6 +165,15 @@ function UnitFramesImproved:UnitColor(unit)
 end
 
 function UnitFramesImproved:AbbreviateLargeNumbers(value)
+  -- Retail (Midnight+) can hand us a secret value here (e.g. health while its actual
+  -- number is being withheld). issecretvalue() only exists on Retail; on Classic this
+  -- branch is simply never taken. Reading a secret's digits via strlen/string.sub
+  -- errors once execution is addon-tainted, so pass it through untouched instead -
+  -- Blizzard's own downstream code is built to display secrets safely, ours isn't.
+  if (issecretvalue and issecretvalue(value)) then
+    return value
+  end
+
   local strLen = strlen(value)
   local retString = value
 

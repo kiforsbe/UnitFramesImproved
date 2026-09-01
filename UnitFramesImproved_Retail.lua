@@ -2,15 +2,25 @@
 
 local STATUS_TEXT_FONT_SIZE = 12
 
--- Blizzard's TextStatusBarMixin:UpdateTextStringWithValues (Blizzard_TextStatusBar)
--- calls self.numericDisplayTransformFunc(value, valueMax) when present, instead of its
--- own capNumericDisplay/BreakUpLargeNumbers formatting - an officially supported
--- extension point for exactly this. Using it means we don't have to re-implement (and
--- keep re-syncing against) Blizzard's own display-mode/percentage/prefix logic just to
--- swap in our own number abbreviation.
-local function NumericDisplayTransform(value, valueMax)
-  return UnitFramesImproved:AbbreviateLargeNumbers(value), UnitFramesImproved:AbbreviateLargeNumbers(valueMax)
-end
+-- NOTE ON NUMBER ABBREVIATION: we don't set a custom numericDisplayTransformFunc here.
+-- Blizzard's TextStatusBarMixin:UpdateTextStringWithValues (Blizzard_TextStatusBar) calls
+-- self.numericDisplayTransformFunc(value, valueMax) when one is present - but merely being
+-- an addon-defined closure taints the REST of that function's execution once called,
+-- regardless of what it returns. Confirmed against Blizzard_TextStatusBar/TextStatusBar.lua:
+-- the transform call is at line 140, and line 170 does a plain `valueMax <= 0` check
+-- afterwards - that comparison then throws "execution tainted by 'UnitFramesImproved'"
+-- whenever health/mana happens to be secret at that moment, even on Blizzard's own,
+-- otherwise-untainted update cycle (i.e. with no forced call from us anywhere involved).
+-- There's no way to guard against this from inside our own transform function, since the
+-- failure is in Blizzard's code, on a value our function never touches.
+--
+-- Blizzard's own capNumericDisplay path (self.capNumericDisplay, checked a few lines above
+-- that same transform-func branch) calls the native AbbreviateLargeNumbers API instead,
+-- which the client's own API docs mark SecretArguments = "AllowedWhenTainted" - built to be
+-- safe here. UnitFrame_Initialize (Blizzard_UnitFrame/Mainline/UnitFrame.lua) already sets
+-- capNumericDisplay = true on every health/mana bar unconditionally, so simply not
+-- overriding it with our own transform func gets the same "abbreviated numbers" result via
+-- Blizzard's own taint-safe path instead of a broken addon-owned one.
 
 -- Shared by all three frames below: set the health bar's fill texture (either
 -- directly, or via a child HealthBarTexture region - Target/Focus frames use the
@@ -37,7 +47,6 @@ end
 function UnitFramesImproved:Style_PlayerFrame()
   if not InCombatLockdown() then
     local healthBar = PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-    local manaBar = PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
 
     StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Player-PortraitOff-Bar-Health-Status", { styleText = true })
 
@@ -45,12 +54,19 @@ function UnitFramesImproved:Style_PlayerFrame()
     PlayerFrame.textLockable = true
     PlayerFrame.forceShow = true
 
-    -- Use our own number abbreviation
-    healthBar.numericDisplayTransformFunc = NumericDisplayTransform
-    manaBar.numericDisplayTransformFunc = NumericDisplayTransform
-
-    -- Force an update as at least on my install, it isn't updating on load
-    healthBar:UpdateTextString();
+    -- Force an update as at least on my install, it isn't updating on load. This is
+    -- our own addon code calling into Blizzard's UpdateTextString, so it runs
+    -- addon-tainted; if the health value happens to be secret at that moment (seen
+    -- in practice right after PLAYER_ENTERING_WORLD), Blizzard's own internal
+    -- valueMax > 0 check throws rather than letting tainted code compare a secret.
+    -- issecretvalue() is documented as safe to call regardless of taint, so check it
+    -- up front and skip the forced call entirely instead of leaning on pcall alone -
+    -- Blizzard's own (untainted) update cycle will pick the bar up on its own once
+    -- the value stops being secret. pcall stays as a second line of defense in case
+    -- some other field ends up secret without currValue reflecting it.
+    if not (issecretvalue and issecretvalue(healthBar.currValue)) then
+      pcall(healthBar.UpdateTextString, healthBar);
+    end
 
     -- Force update of the status bar coloring
     UnitFramesImproved:UpdateStatusBarColor(PlayerFrame)
@@ -60,17 +76,12 @@ end
 function UnitFramesImproved:Style_TargetFrame(frame)
   if not InCombatLockdown() then
     local healthBar = frame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-    local manaBar = frame.TargetFrameContent.TargetFrameContentMain.ManaBar
 
     StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health-Status", { viaHealthBarTexture = true, styleText = true })
 
     -- Force show text
     frame.textLockable = true
     frame.forceShow = true
-
-    -- Use our own number abbreviation
-    healthBar.numericDisplayTransformFunc = NumericDisplayTransform
-    manaBar.numericDisplayTransformFunc = NumericDisplayTransform
 
     -- Force update of the status bar coloring
     UnitFramesImproved:UpdateStatusBarColor(frame)
