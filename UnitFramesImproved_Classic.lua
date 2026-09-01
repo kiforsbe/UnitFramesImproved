@@ -12,41 +12,49 @@ function UnitFramesImproved:Style_PlayerFrame()
   local healthBar = PlayerFrameHealthBar
   local manaBar = PlayerFrameManaBar
 
-  if (not InCombatLockdown()) then
-		--healthBar.lockColor = true
-		healthBar.capNumericDisplay = true
-		healthBar:SetWidth(119)
-		healthBar:SetHeight(29)
-		UnitFramesImproved:OffsetAnchor(healthBar, 0, HEALTH_BAR_TEXTURE_Y_DELTA)
+  -- None of this creates new regions (that's the only genuinely combat-restricted operation
+  -- here) - it only resizes/repositions/recolors regions Blizzard's own template already
+  -- created, so it doesn't need an InCombatLockdown guard.
+	healthBar.lockColor = true
+	healthBar.capNumericDisplay = true
+	healthBar:SetWidth(119)
+	healthBar:SetHeight(29)
+	UnitFramesImproved:OffsetAnchor(healthBar, 0, HEALTH_BAR_TEXTURE_Y_DELTA)
 
-    -- Offset the healthbar texts to be a bit higher than Blizzard's defaults
-		UnitFramesImproved:OffsetAnchor(healthBar.TextString, 0, HEALTH_BAR_TEXT_Y_DELTA)
-		UnitFramesImproved:OffsetAnchor(healthBar.LeftText, 0, HEALTH_BAR_TEXT_Y_DELTA)
-		UnitFramesImproved:OffsetAnchor(healthBar.RightText, 0, HEALTH_BAR_TEXT_Y_DELTA)
+  -- Offset the healthbar texts to be a bit higher than Blizzard's defaults
+	UnitFramesImproved:OffsetAnchor(healthBar.TextString, 0, HEALTH_BAR_TEXT_Y_DELTA)
+	UnitFramesImproved:OffsetAnchor(healthBar.LeftText, 0, HEALTH_BAR_TEXT_Y_DELTA)
+	UnitFramesImproved:OffsetAnchor(healthBar.RightText, 0, HEALTH_BAR_TEXT_Y_DELTA)
 
-    -- Style the manabar fontstrings
-    UnitFramesImproved:SetFontSize(healthBar.TextString, 14)
-    UnitFramesImproved:SetFontSize(healthBar.LeftText, 14)
-    UnitFramesImproved:SetFontSize(healthBar.RightText, 14)
+  -- Style the manabar fontstrings
+  UnitFramesImproved:SetFontSize(healthBar.TextString, 14)
+  UnitFramesImproved:SetFontSize(healthBar.LeftText, 14)
+  UnitFramesImproved:SetFontSize(healthBar.RightText, 14)
 
-    -- Set fonts sizes for PlayerFrameManabar
-    UnitFramesImproved:SetFontSize(manaBar.TextString, 12)
-    UnitFramesImproved:SetFontSize(manaBar.LeftText, 12)
-    UnitFramesImproved:SetFontSize(manaBar.RightText, 12)
-	end
-	
+  -- Set fonts sizes for PlayerFrameManabar
+  UnitFramesImproved:SetFontSize(manaBar.TextString, 12)
+  UnitFramesImproved:SetFontSize(manaBar.LeftText, 12)
+  UnitFramesImproved:SetFontSize(manaBar.RightText, 12)
+
   -- Set the player frame textures
 	PlayerFrameTexture:SetTexture("Interface\\Addons\\UnitFramesImproved\\Textures\\UI-TargetingFrame")
 	PlayerStatusTexture:SetTexture("Interface\\Addons\\UnitFramesImproved\\Textures\\UI-Player-Status")
 
-  -- Status text hook (used by all the statusbars!). Older Classic clients expose this as a
-  -- plain global function; clients that have migrated to Blizzard's mixin-based TextStatusBar
-  -- system (confirmed live: current Classic build errors "is not a function" on the global name)
+  -- Status text hook (used by all the statusbars!). Only register once - Style_PlayerFrame
+  -- runs on every PLAYER_ENTERING_WORLD/PLAYER_REGEN_ENABLED, and hooksecurefunc doesn't
+  -- deduplicate, so re-registering the same handler each time would make it fire once per
+  -- registration per actual update. Older Classic clients expose this as a plain global
+  -- function; clients that have migrated to Blizzard's mixin-based TextStatusBar system
+  -- (confirmed live: current Classic build errors "is not a function" on the global name)
   -- only expose it as TextStatusBarMixin:UpdateTextStringWithValues instead.
-  if (TextStatusBar_UpdateTextStringWithValues) then
-    hooksecurefunc("TextStatusBar_UpdateTextStringWithValues", UnitFramesImproved_UpdateTextStringWithValues)
-  elseif (TextStatusBarMixin and TextStatusBarMixin.UpdateTextStringWithValues) then
-    hooksecurefunc(TextStatusBarMixin, "UpdateTextStringWithValues", UnitFramesImproved_UpdateTextStringWithValues)
+  if (not UnitFramesImproved.textStatusBarHooked) then
+    if (TextStatusBar_UpdateTextStringWithValues) then
+      hooksecurefunc("TextStatusBar_UpdateTextStringWithValues", UnitFramesImproved.UpdateTextStringWithValues)
+      UnitFramesImproved.textStatusBarHooked = true
+    elseif (TextStatusBarMixin and TextStatusBarMixin.UpdateTextStringWithValues) then
+      hooksecurefunc(TextStatusBarMixin, "UpdateTextStringWithValues", UnitFramesImproved.UpdateTextStringWithValues)
+      UnitFramesImproved.textStatusBarHooked = true
+    end
   end
 
   -- Update the statusbar color to trigger it to show at load

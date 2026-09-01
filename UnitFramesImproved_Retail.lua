@@ -45,56 +45,53 @@ local function StyleHealthBarFill(healthBar, atlas, opts)
 end
 
 function UnitFramesImproved:Style_PlayerFrame()
-  if not InCombatLockdown() then
-    local healthBar = PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
+  -- None of this creates new regions (that's the only genuinely combat-restricted operation -
+  -- Blizzard's templates already create every region touched here), so it doesn't need an
+  -- InCombatLockdown guard.
+  local healthBar = PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
 
-    StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Player-PortraitOff-Bar-Health-Status", { styleText = true })
+  StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Player-PortraitOff-Bar-Health-Status", { styleText = true })
 
-    -- Force show text
-    PlayerFrame.textLockable = true
-    PlayerFrame.forceShow = true
+  -- Force show text
+  PlayerFrame.textLockable = true
+  PlayerFrame.forceShow = true
 
-    -- Force an update as at least on my install, it isn't updating on load. This is
-    -- our own addon code calling into Blizzard's UpdateTextString, so it runs
-    -- addon-tainted; if the health value happens to be secret at that moment (seen
-    -- in practice right after PLAYER_ENTERING_WORLD), Blizzard's own internal
-    -- valueMax > 0 check throws rather than letting tainted code compare a secret.
-    -- issecretvalue() is documented as safe to call regardless of taint, so check it
-    -- up front and skip the forced call entirely instead of leaning on pcall alone -
-    -- Blizzard's own (untainted) update cycle will pick the bar up on its own once
-    -- the value stops being secret. pcall stays as a second line of defense in case
-    -- some other field ends up secret without currValue reflecting it.
-    if not (issecretvalue and issecretvalue(healthBar.currValue)) then
-      pcall(healthBar.UpdateTextString, healthBar);
-    end
-
-    -- Force update of the status bar coloring
-    UnitFramesImproved:UpdateStatusBarColor(PlayerFrame)
+  -- Force an update as at least on my install, it isn't updating on load. This is
+  -- our own addon code calling into Blizzard's UpdateTextString, so it runs
+  -- addon-tainted; if the health value happens to be secret at that moment (seen
+  -- in practice right after PLAYER_ENTERING_WORLD), Blizzard's own internal
+  -- valueMax > 0 check throws rather than letting tainted code compare a secret.
+  -- issecretvalue() is documented as safe to call regardless of taint, so check it
+  -- up front and skip the forced call entirely instead of leaning on pcall alone -
+  -- Blizzard's own (untainted) update cycle will pick the bar up on its own once
+  -- the value stops being secret. pcall stays as a second line of defense in case
+  -- some other field ends up secret without currValue reflecting it.
+  if not (issecretvalue and issecretvalue(healthBar.currValue)) then
+    pcall(healthBar.UpdateTextString, healthBar);
   end
+
+  -- Force update of the status bar coloring
+  UnitFramesImproved:UpdateStatusBarColor(PlayerFrame)
 end
 
 function UnitFramesImproved:Style_TargetFrame(frame)
-  if not InCombatLockdown() then
-    local healthBar = frame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
+  local healthBar = frame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
 
-    StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health-Status", { viaHealthBarTexture = true, styleText = true })
+  StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health-Status", { viaHealthBarTexture = true, styleText = true })
 
-    -- Force show text
-    frame.textLockable = true
-    frame.forceShow = true
+  -- Force show text
+  frame.textLockable = true
+  frame.forceShow = true
 
-    -- Force update of the status bar coloring
-    UnitFramesImproved:UpdateStatusBarColor(frame)
-  end
+  -- Force update of the status bar coloring
+  UnitFramesImproved:UpdateStatusBarColor(frame)
 end
 
 function UnitFramesImproved:Style_ToTFrame(frame)
-  if not InCombatLockdown() then
-    local healthBar = frame.HealthBar
+  local healthBar = frame.HealthBar
 
-    StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-TargetofTarget-PortraitOn-Bar-Health-Status")
+  StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-TargetofTarget-PortraitOn-Bar-Health-Status")
 
-    -- Force update of the status bar coloring
-    UnitFramesImproved:UpdateStatusBarColor(frame)
-  end
+  -- Force update of the status bar coloring
+  UnitFramesImproved:UpdateStatusBarColor(frame)
 end

@@ -61,7 +61,7 @@ function UnitFramesImproved:UNIT_TARGET(self, unitTarget)
 end
 
 -- Common Functions
-function UnitFramesImproved_UpdateTextStringWithValues(statusFrame, textString, value, valueMin, valueMax)
+function UnitFramesImproved.UpdateTextStringWithValues(statusFrame, textString, value, valueMin, valueMax)
   if (statusFrame.LeftText and statusFrame.RightText and textString) then
     statusFrame.LeftText:SetText("")
     statusFrame.RightText:SetText("")
@@ -127,6 +127,12 @@ function UnitFramesImproved_UpdateTextStringWithValues(statusFrame, textString, 
 end
 
 function UnitFramesImproved:UpdateStatusBarColor(frame)
+  -- frame/frame.healthbar can be nil - e.g. TargetFrameToT/FocusFrameToT don't exist on
+  -- every client, and Style_ToTFrame doesn't guarantee .healthbar gets set on them.
+  if (not frame or not frame.healthbar) then
+    return
+  end
+
   -- Set back color of health bar
   if (not UnitPlayerControlled(frame.unit) and UnitIsTapDenied(frame.unit)) then
     -- Gray if npc is tapped by other player
@@ -225,3 +231,10 @@ end
 
 -- Events
 UnitFramesImproved:RegisterEvent("PLAYER_ENTERING_WORLD", "LoadConfig")
+
+-- Catch-up: LoadConfig's InCombatLockdown-guarded region creation (e.g. Style_TargetFrame's
+-- CreateStatusBarText fallback) can be skipped if PLAYER_ENTERING_WORLD or a target/focus
+-- change happens mid-combat. Re-running LoadConfig on leaving combat is safe to repeat -
+-- OffsetAnchor caches its own baseline and region creation is guarded by a nil check - so
+-- this just picks up anything that was skipped, without redoing/drifting anything that wasn't.
+UnitFramesImproved:RegisterEvent("PLAYER_REGEN_ENABLED", "LoadConfig")
