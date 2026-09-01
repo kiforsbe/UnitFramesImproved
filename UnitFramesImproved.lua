@@ -20,7 +20,13 @@ function UnitFramesImproved:OnInitialize()
 end
 
 function UnitFramesImproved:LoadConfig()
-  DebugPrint("OK", "INFO", 2, "Loading config...")
+  -- LoadConfig re-runs on every PLAYER_ENTERING_WORLD (fires on every zone/loading screen,
+  -- not just initial login) and on PLAYER_REGEN_ENABLED (combat-lockdown catch-up), so only
+  -- announce the very first application - re-applications should stay silent.
+  local isFirstLoad = not UnitFramesImproved.configLoadedOnce
+  if (isFirstLoad) then
+    DebugPrint("OK", "INFO", 2, "Loading config...")
+  end
 
   -- Set up default stylings
   UnitFramesImproved:Style_PlayerFrame()
@@ -29,7 +35,10 @@ function UnitFramesImproved:LoadConfig()
   UnitFramesImproved:Style_ToTFrame(TargetFrameToT)
   UnitFramesImproved:Style_ToTFrame(FocusFrameToT)
 
-  DebugPrint("OK", "INFO", 2, "Config loaded.")
+  if (isFirstLoad) then
+    DebugPrint("OK", "INFO", 2, "Config loaded.")
+    UnitFramesImproved.configLoadedOnce = true
+  end
 end
 
 -- Slash-command Handlers
