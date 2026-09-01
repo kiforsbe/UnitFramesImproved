@@ -1,11 +1,4 @@
-# Covers current Classic progression (Mists of Pandaria Classic, patch 5.5.x - verify
-# the exact current number in-game with /dump select(4, GetBuildInfo()) before release).
-# This file uses the generic "_Classic" suffix, which the client matches for ANY
-# Classic-family flavor (Vanilla excluded - it has its own _Vanilla.toc). That means
-# when progression moves on to the next expansion (e.g. Warlords of Draenor Classic),
-# this same file keeps loading - just append the new Interface number to the
-# comma-delimited list below instead of adding a new TOC file per expansion.
-## Interface: 50505
+## Interface: 20506
 
 ## Title: UnitFramesImproved
 ## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
@@ -15,7 +8,6 @@
 ## OptionalDeps: LibStub, Ace3
 
 ## Category: Unit Frames
-## AllowLoadGameType: classic
 
 ## X-License: Public Domain
 ## X-Category: Unit Frames

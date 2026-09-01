@@ -8,7 +8,6 @@
 ## OptionalDeps: LibStub, Ace3
 
 ## Category: Unit Frames
-## AllowLoadGameType: vanilla
 
 ## X-License: Public Domain
 ## X-Category: Unit Frames

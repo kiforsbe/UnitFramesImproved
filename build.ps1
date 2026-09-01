@@ -18,8 +18,8 @@
   opt in via -DeployToWow, -WowInstallPath, or -TargetPath, so a plain `.\build.ps1` is
   always safe to run without touching a live install. When one of those is given, the
   already-staged deploy\UnitFramesImproved folder is copied as-is into Interface\AddOns
-  under every _retail_ / _classic_ / _classic_era_ folder found (or into -TargetPath
-  directly) - it's a copy of the one build, not a second independent build.
+  under every _retail_ / _classic_ / _classic_era_ / _anniversary_ folder found (or into
+  -TargetPath directly) - it's a copy of the one build, not a second independent build.
 
 .PARAMETER DeployToWow
   Also copy the build into every WoW install flavor found via -WowInstallPath, the
@@ -154,12 +154,13 @@ function Find-WowInstallRoot {
     return $null
 }
 
-# _retail_/_classic_/_classic_era_ are separate installs sharing one root; deploy to
-# every one that's actually present so all flavors stay in sync from one run.
+# _retail_/_classic_/_classic_era_/_anniversary_ are separate installs sharing one root;
+# deploy to every one that's actually present so all flavors stay in sync from one run.
 $Flavors = [ordered]@{
     '_retail_'      = 'Retail'
     '_classic_'     = 'Classic'
     '_classic_era_' = 'Classic Era'
+    '_anniversary_' = 'TBC Anniversary'
 }
 
 $DeployDir = Join-Path $RepoRoot 'deploy\UnitFramesImproved'
@@ -215,12 +216,14 @@ $SourceItems = @(
     'UnitFramesImproved.toc',
     'UnitFramesImproved_Retail.lua',
     'UnitFramesImproved_Classic.lua',
-    'UnitFramesImproved_Classic.toc',
+    'UnitFramesImproved_Mists.toc',
     'UnitFramesImproved_Vanilla.toc',
+    'UnitFramesImproved_TBC.toc',
     'Textures',
     'LICENSE.txt',
     'LICENSE-ACE3.txt',
-    'README.md'
+    'README.md',
+    'CHANGELOG.md'
 )
 
 # Guards the wipe in Deploy-Addon below: refuses unless the target both looks like a WoW

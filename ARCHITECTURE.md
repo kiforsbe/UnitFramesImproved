@@ -34,7 +34,7 @@ flowchart LR
         direction LR
         H1[HelperFunctions.lua] --> S1[UnitFramesImproved.lua] --> F1[UnitFramesImproved_Retail.lua]
     end
-    subgraph C["UnitFramesImproved_Classic.toc (classic)"]
+    subgraph C["UnitFramesImproved_Mists.toc (classic)"]
         direction LR
         H2[HelperFunctions.lua] --> S2[UnitFramesImproved.lua] --> F2[UnitFramesImproved_Classic.lua]
     end

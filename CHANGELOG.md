@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.0.1-universal] - 2026-09-01
+
+### Fixed
+- Classic-family TOC files (`_Vanilla`, `_Mists`, `_TBC`) failed to load at all - each started
+  with a plain `#` comment line before `## Interface:`, which the client silently treats as an
+  unparseable TOC (confirmed by comparing against ~200 real installed addons: only Questie's
+  deliberately-broken placeholder TOC shared that pattern, used intentionally to produce this
+  exact effect). `## Interface:` is now always the first line.
+- `UnitFramesImproved_Classic.toc` renamed to `UnitFramesImproved_Mists.toc` - Mists of Pandaria
+  Classic has its own dedicated TOC suffix (confirmed via other installed addons, e.g.
+  `TomTom_Mists.toc`, `BetterBags_Mists.toc`); the generic `_Classic` catch-all suffix wasn't being
+  reliably matched for it.
+- MoP Classic `Interface` declaration corrected and broadened to `50500, 50501, 50502, 50504` -
+  `50504` is this client's actual running interface (`/dump select(4, GetBuildInfo())`), which has
+  to be present in the list since "out of date" triggers whenever the declared Interface is lower
+  than the client's, not merely different from it.
+- Removed `## AllowLoadGameType` from all TOC files - redundant with, and murkier than, the
+  per-flavor TOC suffix split already in place.
+
+### Added
+- `UnitFramesImproved_TBC.toc` for the Burning Crusade Classic Anniversary client (`_anniversary_`,
+  product `wow_anniversary`) - a separate product from Classic Era, not a continuation of it.
+- `build.ps1` now auto-detects and deploys to a `_anniversary_` install alongside the existing
+  `_retail_`/`_classic_`/`_classic_era_` flavors, and ships `CHANGELOG.md` in the built addon
+  folder/zip.
+
 ## [4.0.0-universal] - 2026-09-01
 
 ### Fixed
@@ -73,7 +99,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2.0.0-retail] - 2022-10-29
 - Initial tagged release.
 
-[Unreleased]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.0-universal...HEAD
+[Unreleased]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.1-universal...HEAD
+[4.0.1-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.0-universal...4.0.1-universal
 [4.0.0-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/3.0.0-universal...4.0.0-universal
 [3.0.0-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/2.2.0-retail...3.0.0-universal
 [2.2.0-retail]: https://github.com/kiforsbe/UnitFramesImproved/compare/2.1.0-retail...2.2.0-retail
