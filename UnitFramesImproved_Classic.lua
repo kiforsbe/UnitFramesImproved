@@ -39,8 +39,15 @@ function UnitFramesImproved:Style_PlayerFrame()
 	PlayerFrameTexture:SetTexture("Interface\\Addons\\UnitFramesImproved\\Textures\\UI-TargetingFrame")
 	PlayerStatusTexture:SetTexture("Interface\\Addons\\UnitFramesImproved\\Textures\\UI-Player-Status")
 
-  -- Status text hook (used by all the statusbars!)
-  hooksecurefunc("TextStatusBar_UpdateTextStringWithValues", UnitFramesImproved_UpdateTextStringWithValues)
+  -- Status text hook (used by all the statusbars!). Older Classic clients expose this as a
+  -- plain global function; clients that have migrated to Blizzard's mixin-based TextStatusBar
+  -- system (confirmed live: current Classic build errors "is not a function" on the global name)
+  -- only expose it as TextStatusBarMixin:UpdateTextStringWithValues instead.
+  if (TextStatusBar_UpdateTextStringWithValues) then
+    hooksecurefunc("TextStatusBar_UpdateTextStringWithValues", UnitFramesImproved_UpdateTextStringWithValues)
+  elseif (TextStatusBarMixin and TextStatusBarMixin.UpdateTextStringWithValues) then
+    hooksecurefunc(TextStatusBarMixin, "UpdateTextStringWithValues", UnitFramesImproved_UpdateTextStringWithValues)
+  end
 
   -- Update the statusbar color to trigger it to show at load
 	UnitFramesImproved:UpdateStatusBarColor(healthBar)
