@@ -1,41 +1,46 @@
 <#
 .SYNOPSIS
-  Builds UnitFramesImproved locally and deploys it straight into your WoW AddOns
-  folder(s), standing in for the CurseForge packager during dev/testing.
+  Builds UnitFramesImproved locally, standing in for the CurseForge packager during
+  dev/testing.
 
 .DESCRIPTION
   The repo's Libs/ (LibStub, Ace3) are fetched by the real packager from .pkgmeta's SVN
   externals at release time and are not committed here. This script fetches the same
   externals itself over plain HTTP (repos.wowace.com serves its SVN tree over HTTP GET,
   no svn client required), caches them in the gitignored Libs/ folder so repeat builds
-  are instant, then copies addon source + Libs into each target and stamps the
-  @project-version@ / @project-date-iso@ tokens the packager would otherwise fill in.
+  are instant, then copies addon source + Libs into deploy\UnitFramesImproved (gitignored,
+  .pkgmeta-ignored) and stamps the @project-version@ / @project-date-iso@ tokens the
+  packager would otherwise fill in.
 
-  Also fetches CallbackHandler-1.0, which AceEvent-3.0.lua requires via
-  LibStub("CallbackHandler-1.0") at load time but which .pkgmeta does not currently
-  declare as an external - without it the addon fails to load with a LibStub error.
-  That's a real gap in .pkgmeta worth fixing there too; this script works around it
-  for local testing regardless.
+  By default that's the only output - nothing is copied into a WoW install unless you
+  opt in via -DeployToWow, -WowInstallPath, or -TargetPath, so a plain `.\build.ps1` is
+  always safe to run without touching a live install. When one of those is given, the
+  already-staged deploy\UnitFramesImproved folder is copied as-is into Interface\AddOns
+  under every _retail_ / _classic_ / _classic_era_ folder found (or into -TargetPath
+  directly) - it's a copy of the one build, not a second independent build.
 
-  Unless -TargetPath is given, the WoW install root is located automatically (see
-  Find-WowInstallRoot below), then the addon is deployed into Interface\AddOns under
-  every _retail_ / _classic_ / _classic_era_ folder that actually exists under that
-  root - so one run keeps all three flavors' test copies in sync.
+.PARAMETER DeployToWow
+  Also copy the build into every WoW install flavor found via -WowInstallPath, the
+  UFI_WOW_PATH environment variable, or auto-detection (see Find-WowInstallRoot below),
+  in that order. This is what the "Build & Deploy Addon" F5 task in .vscode/launch.json
+  uses, so F5 keeps behaving like a full build+deploy.
 
 .PARAMETER TargetPath
-  Deploy into exactly this one AddOns folder, bypassing WoW-install auto-detection
-  and the -WowInstallPath/UFI_WOW_PATH lookup entirely.
+  Also copy the build into exactly this one AddOns folder, bypassing WoW-install
+  auto-detection and the -WowInstallPath/UFI_WOW_PATH lookup entirely. Implies
+  -DeployToWow.
 
 .PARAMETER WowInstallPath
   The WoW install root (the folder that directly contains _retail_/_classic_/
   _classic_era_ - e.g. 'E:\Blizzard\World of Warcraft'). Takes precedence over the
-  UFI_WOW_PATH environment variable and auto-detection.
+  UFI_WOW_PATH environment variable and auto-detection. Implies -DeployToWow.
 
 .PARAMETER RefreshLibs
   Re-fetch Libs/ even if already cached (e.g. if wowace revs a library).
 
 .EXAMPLE
   .\build.ps1
+  .\build.ps1 -DeployToWow
   .\build.ps1 -WowInstallPath 'D:\Games\World of Warcraft'
   .\build.ps1 -TargetPath 'E:\Blizzard\World of Warcraft\_classic_\Interface\AddOns\UnitFramesImproved'
 
@@ -47,6 +52,7 @@
 param(
     [string]$TargetPath,
     [string]$WowInstallPath,
+    [switch]$DeployToWow,
     [switch]$RefreshLibs
 )
 
@@ -154,9 +160,20 @@ $Flavors = [ordered]@{
     '_classic_era_' = 'Classic Era'
 }
 
-function Get-DeployTargets {
+$DeployDir = Join-Path $RepoRoot 'deploy\UnitFramesImproved'
+
+# Every build always stages into the local, gitignored deploy/ folder (a look at exactly what
+# would ship, and something to inspect/zip up without a WoW install at hand). WoW install
+# copies are opt-in only (-DeployToWow / -WowInstallPath / -TargetPath) - returns an empty
+# array when the caller didn't ask for any of those, so a plain `.\build.ps1` never touches
+# a live install.
+function Get-WowDeployTargets {
     if ($TargetPath) {
         return @($TargetPath)
+    }
+
+    if (-not $DeployToWow -and -not $WowInstallPath) {
+        return @()
     }
 
     $root = $WowInstallPath
@@ -164,7 +181,8 @@ function Get-DeployTargets {
     if (-not $root) { $root = Find-WowInstallRoot }
 
     if (-not $root) {
-        throw "Couldn't locate a WoW install. Pass -WowInstallPath, set the UFI_WOW_PATH environment variable, or pass -TargetPath directly."
+        Write-Host "No WoW install found - deploy\UnitFramesImproved was still built. Pass -WowInstallPath, set the UFI_WOW_PATH environment variable, or pass -TargetPath to deploy into a live install." -ForegroundColor Yellow
+        return @()
     }
     if (-not (Test-Path $root)) {
         throw "WoW install path '$root' does not exist."
@@ -182,7 +200,7 @@ function Get-DeployTargets {
     }
 
     if ($targets.Count -eq 0) {
-        throw "No _retail_/_classic_/_classic_era_ folder found under '$root'."
+        Write-Host "  no _retail_/_classic_/_classic_era_ folder found under '$root'" -ForegroundColor Yellow
     }
 
     return $targets
@@ -203,10 +221,11 @@ $SourceItems = @(
     'README.md'
 )
 
-# Guards the wipe in Deploy-Addon below: refuses unless the target both looks like a
-# WoW AddOns folder for this addon specifically, AND every entry already in it is one
-# our own deploy could have produced. A -TargetPath typo or a Deploy-Addon caller bug
-# pointing this at, say, a Documents folder must not turn into a silent recursive delete.
+# Guards the wipe in Deploy-Addon below: refuses unless the target both looks like a WoW
+# AddOns folder (or is the local deploy/ staging folder) for this addon specifically, AND
+# every entry already in it is one our own deploy could have produced. A -TargetPath typo
+# or a Deploy-Addon caller bug pointing this at, say, a Documents folder must not turn into
+# a silent recursive delete.
 function Assert-SafeToWipe {
     param([string]$Target)
 
@@ -214,8 +233,8 @@ function Assert-SafeToWipe {
         return
     }
 
-    if ($Target -notmatch '\\Interface\\AddOns\\UnitFramesImproved\\?$') {
-        throw "Refusing to wipe '$Target' - doesn't look like a WoW AddOns folder (expected it to end in '...\Interface\AddOns\UnitFramesImproved')."
+    if ($Target -ne $DeployDir -and $Target -notmatch '\\Interface\\AddOns\\UnitFramesImproved\\?$') {
+        throw "Refusing to wipe '$Target' - doesn't look like a WoW AddOns folder (expected it to end in '...\Interface\AddOns\UnitFramesImproved') or the local deploy folder ('$DeployDir')."
     }
 
     $knownEntries = @($SourceItems) + 'Libs'
@@ -252,6 +271,7 @@ function Deploy-Addon {
     $version = git -C $RepoRoot describe --tags --always --dirty 2>$null
     if (-not $version) { $version = 'dev' }
     $dateIso = Get-Date -Format 'yyyy-MM-dd'
+    $script:BuildVersion = $version
 
     Get-ChildItem -Path $Target -Filter '*.toc' | ForEach-Object {
         (Get-Content $_.FullName -Raw) `
@@ -263,7 +283,25 @@ function Deploy-Addon {
     Write-Host "  version $version ($dateIso)" -ForegroundColor Green
 }
 
+# Copies the already-built deploy\UnitFramesImproved folder as-is into a WoW install (or
+# -TargetPath) - a copy of the one staged build, not an independent second build, so every
+# target ends up byte-for-byte identical.
+function Copy-StagedBuildTo {
+    param([string]$Target)
+
+    Write-Host "Deploying to $Target" -ForegroundColor Cyan
+
+    if (Test-Path $Target) {
+        Assert-SafeToWipe -Target $Target
+        Remove-Item $Target -Recurse -Force
+    }
+
+    Copy-Item -Path $DeployDir -Destination $Target -Recurse -Force
+    Write-Host "  version $script:BuildVersion" -ForegroundColor Green
+}
+
 Sync-Libs
-foreach ($target in (Get-DeployTargets)) {
-    Deploy-Addon -Target $target
+Deploy-Addon -Target $DeployDir
+foreach ($target in (Get-WowDeployTargets)) {
+    Copy-StagedBuildTo -Target $target
 }

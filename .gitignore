@@ -1,3 +1,5 @@
 .release
 .vscode
+.claude
 Libs/
+deploy/

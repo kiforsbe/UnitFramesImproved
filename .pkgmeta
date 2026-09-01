@@ -7,5 +7,10 @@ externals:
   Libs/AceConsole-3.0: https://repos.wowace.com/wow/ace3/trunk/AceConsole-3.0
   Libs/AceEvent-3.0: https://repos.wowace.com/wow/ace3/trunk/AceEvent-3.0
 
+# Tracked files that shouldn't end up inside the shipped in-game addon folder. Anything
+# already gitignored (.claude/, .vscode/, Libs/ before it's populated above) never reaches
+# the packager in the first place, so it doesn't need listing here too.
 ignore:
+  - build.ps1
   - deploy
+  - ARCHITECTURE.md

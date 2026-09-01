@@ -1,0 +1,30 @@
+name: Package and Release
+
+# Runs the real CurseForge packager (github.com/BigWigsMods/packager) against .pkgmeta - it builds
+# the same zip `build.ps1` stages locally into deploy/, stamps the @project-version@/
+# @project-date-iso@ TOC tokens from the selected ref, uploads it to the CurseForge project
+# declared via X-Curse-Project-ID in the TOC files, and attaches the zip to a matching GitHub
+# release (using CHANGELOG.md as release notes).
+#
+# Manual-only for now: run it from the Actions tab (Run workflow), picking the tag to release from
+# the branch/tag dropdown. Switch back to an automatic `push: tags: ['*']` trigger once ready.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
