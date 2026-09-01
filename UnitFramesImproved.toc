@@ -1,10 +1,13 @@
-## Interface: 110002
+## Interface: 120100
 
 ## Title: UnitFramesImproved
 ## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
 ## Version: @project-version@
 ## Author: Althalla (Kim Forsberg)
 ## OptionalDeps: LibStub, Ace3
+
+## Category: Unit Frames
+## AllowLoadGameType: mainline
 
 ## X-License: Public Domain
 ## X-Category: Unit Frames

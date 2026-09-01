@@ -1,10 +1,13 @@
-## Interface: 11502
+## Interface: 11509
 
 ## Title: UnitFramesImproved
 ## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
 ## Version: @project-version@
 ## Author: Althalla (Kim Forsberg)
 ## OptionalDeps: LibStub, Ace3
+
+## Category: Unit Frames
+## AllowLoadGameType: vanilla
 
 ## X-License: Public Domain
 ## X-Category: Unit Frames
@@ -20,4 +23,4 @@ Libs\AceEvent-3.0\AceEvent-3.0.xml
 
 HelperFunctions.lua
 UnitFramesImproved.lua
-UnitFramesImproved_Vanilla.lua
+UnitFramesImproved_Classic.lua

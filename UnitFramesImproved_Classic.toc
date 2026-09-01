@@ -1,0 +1,33 @@
+# Covers current Classic progression (Mists of Pandaria Classic, patch 5.5.x - verify
+# the exact current number in-game with /dump select(4, GetBuildInfo()) before release).
+# This file uses the generic "_Classic" suffix, which the client matches for ANY
+# Classic-family flavor (Vanilla excluded - it has its own _Vanilla.toc). That means
+# when progression moves on to the next expansion (e.g. Warlords of Draenor Classic),
+# this same file keeps loading - just append the new Interface number to the
+# comma-delimited list below instead of adding a new TOC file per expansion.
+## Interface: 50505
+
+## Title: UnitFramesImproved
+## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
+## Version: @project-version@
+## Author: Althalla (Kim Forsberg)
+## OptionalDeps: LibStub, Ace3
+
+## Category: Unit Frames
+## AllowLoadGameType: classic
+
+## X-License: Public Domain
+## X-Category: Unit Frames
+## X-Curse-Project-ID: 27038
+## X-Date: @project-date-iso@
+
+#@no-lib-strip@
+Libs\LibStub\LibStub.lua
+Libs\AceAddon-3.0\AceAddon-3.0.xml
+Libs\AceConsole-3.0\AceConsole-3.0.xml
+Libs\AceEvent-3.0\AceEvent-3.0.xml
+#@end-no-lib-strip@
+
+HelperFunctions.lua
+UnitFramesImproved.lua
+UnitFramesImproved_Classic.lua

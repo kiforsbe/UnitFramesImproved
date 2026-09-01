@@ -1,4 +1,6 @@
--- Stylers for Vanilla
+-- Stylers for the Classic family (Classic Era/Vanilla, and Classic progression: Wrath, Cata, Mists, ...)
+-- Shared because these clients still use the pre-Dragonflight global-named frame templates,
+-- unlike Retail which was rebuilt around nested PlayerFrameContent-style templates.
 function UnitFramesImproved:Style_PlayerFrame()
 	PlayerFrameHealthBar.healthbar = PlayerFrameHealthBar
 
