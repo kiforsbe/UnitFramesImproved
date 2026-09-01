@@ -10,7 +10,9 @@
   no svn client required), caches them in the gitignored Libs/ folder so repeat builds
   are instant, then copies addon source + Libs into deploy\UnitFramesImproved (gitignored,
   .pkgmeta-ignored) and stamps the @project-version@ / @project-date-iso@ tokens the
-  packager would otherwise fill in.
+  packager would otherwise fill in. It also zips that folder into
+  deploy\UnitFramesImproved-<version>.zip, in the same one-folder-at-the-root layout the
+  real CurseForge packager produces, for manual testing/sharing without going through CI.
 
   By default that's the only output - nothing is copied into a WoW install unless you
   opt in via -DeployToWow, -WowInstallPath, or -TargetPath, so a plain `.\build.ps1` is
@@ -283,6 +285,21 @@ function Deploy-Addon {
     Write-Host "  version $version ($dateIso)" -ForegroundColor Green
 }
 
+# Zips the staged build into deploy\UnitFramesImproved-<version>.zip - the same
+# one-folder-at-the-root layout the real CurseForge packager produces, so it's ready to
+# manually upload/share or extract straight into Interface\AddOns. Removes any zip left
+# over from a previous, differently-versioned build first so they don't pile up.
+function New-DeployZip {
+    $deployRoot = Split-Path $DeployDir -Parent
+    Get-ChildItem -Path $deployRoot -Filter 'UnitFramesImproved-*.zip' -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
+    $zipPath = Join-Path $deployRoot "UnitFramesImproved-$script:BuildVersion.zip"
+    Compress-Archive -Path $DeployDir -DestinationPath $zipPath -Force
+
+    Write-Host "  zipped to $zipPath" -ForegroundColor Green
+}
+
 # Copies the already-built deploy\UnitFramesImproved folder as-is into a WoW install (or
 # -TargetPath) - a copy of the one staged build, not an independent second build, so every
 # target ends up byte-for-byte identical.
@@ -302,6 +319,7 @@ function Copy-StagedBuildTo {
 
 Sync-Libs
 Deploy-Addon -Target $DeployDir
+New-DeployZip
 foreach ($target in (Get-WowDeployTargets)) {
     Copy-StagedBuildTo -Target $target
 }

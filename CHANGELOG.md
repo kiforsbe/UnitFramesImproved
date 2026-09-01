@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a matching GitHub release using this changelog as the release notes.
 - `IconTexture` metadata in all three TOC files, so the addon shows an icon in the in-game AddOns
   list instead of the default blank/placeholder icon.
+- `build.ps1` now also zips the staged build into `deploy\UnitFramesImproved-<version>.zip`.
 
 ### Changed
 - Debug "Loading config... / Config loaded." messages now only print on the very first load, not on

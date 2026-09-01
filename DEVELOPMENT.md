@@ -6,8 +6,10 @@ what the addon does, and [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is 
 ## Building From Source
 `build.ps1` (PowerShell) is a local stand-in for the CurseForge packager - it fetches the same
 Ace3/LibStub externals declared in `.pkgmeta` (cached in the gitignored `Libs/` folder after the
-first run), stages a build into `deploy\UnitFramesImproved`, and stamps the
-`@project-version@`/`@project-date-iso@` TOC tokens from `git describe`.
+first run), stages a build into `deploy\UnitFramesImproved`, stamps the
+`@project-version@`/`@project-date-iso@` TOC tokens from `git describe`, and zips the result into
+`deploy\UnitFramesImproved-<version>.zip` (folder-at-the-root, ready to extract straight into
+`Interface\AddOns` or share for manual testing).
 
 ```powershell
 .\build.ps1                                                                     # deploy\UnitFramesImproved only
