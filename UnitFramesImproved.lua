@@ -124,14 +124,6 @@ function UnitFramesImproved.UpdateTextStringWithValues(statusFrame, textString, 
 				textString:SetText(valueDisplay.." / "..valueMaxDisplay);
 			end
 		end
-	else
-		textString:Hide();
-		textString:SetText("");
-		if ( not statusFrame.alwaysShow ) then
-			statusFrame:Hide();
-		else
-			statusFrame:SetValue(0);
-		end
 	end
 end
 

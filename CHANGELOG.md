@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   than the client's, not merely different from it.
 - Removed `## AllowLoadGameType` from all TOC files - redundant with, and murkier than, the
   per-flavor TOC suffix split already in place.
+- `ADDON_ACTION_BLOCKED` error calling `MultiBarBottomLeft:ClearAllPointsBase()` during combat -
+  `UpdateTextStringWithValues` (hooked onto the shared, game-wide `TextStatusBar_UpdateTextStringWithValues`)
+  redundantly re-ran Blizzard's own "hide when inactive" logic from insecure code, including
+  `statusFrame:Hide()`, on every status bar update in the game. Blizzard's own call already handles
+  that case securely just before the hook fires, so the branch was both dead weight and a taint risk
+  to whatever secure frame-position pass runs next. Removed.
 
 ### Added
 - `UnitFramesImproved_TBC.toc` for the Burning Crusade Classic Anniversary client (`_anniversary_`,
