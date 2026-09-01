@@ -62,17 +62,13 @@ end
 
 -- Common Functions
 function UnitFramesImproved_UpdateTextStringWithValues(statusFrame, textString, value, valueMin, valueMax)
-  if (false and statusFrame.LeftText and statusFrame.RightText) then
-    --if not InCombatLockdown() then
-      if (textString) then
-        statusFrame.LeftText:SetText("")
-        statusFrame.RightText:SetText("")
-        statusFrame.LeftText:Hide()
-        statusFrame.RightText:Hide()
+  if (statusFrame.LeftText and statusFrame.RightText and textString) then
+    statusFrame.LeftText:SetText("")
+    statusFrame.RightText:SetText("")
+    statusFrame.LeftText:Hide()
+    statusFrame.RightText:Hide()
 
-        textString:Show()
-      end
-    --end
+    textString:Show()
   end
 
 	if ( ( tonumber(valueMax) ~= valueMax or valueMax > 0 ) and not ( statusFrame.pauseUpdates ) ) then
