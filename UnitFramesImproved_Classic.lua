@@ -5,6 +5,30 @@ local HEALTH_BAR_TEXTURE_Y_DELTA = 18
 local HEALTH_BAR_TEXT_Y_DELTA = 3
 local MINUS_CLASSIFICATION_Y_SHIFT = -19
 
+-- Applies our custom size/anchor to the given health bar and its text strings. Takes the bar
+-- explicitly (matching StyleHealthBarFill's convention in UnitFramesImproved_Retail.lua) rather
+-- than reading PlayerFrameHealthBar as a global, so the dependency is explicit - see the hook
+-- registration below for why it's still always called with PlayerFrameHealthBar specifically.
+-- Only valid while PlayerFrame is in "player" state - Blizzard resizes/re-anchors this same bar
+-- to different dimensions for vehicle state (PlayerFrame_ToVehicleArt in Blizzard's
+-- Classic/PlayerFrame.lua), so callers must not invoke this while PlayerFrame.state == "vehicle".
+local function RestylePlayerHealthBarLayout(healthBar)
+  healthBar.lockColor = true
+  healthBar.capNumericDisplay = true
+  healthBar:SetWidth(119)
+  healthBar:SetHeight(29)
+  UnitFramesImproved:OffsetAnchor(healthBar, 0, HEALTH_BAR_TEXTURE_Y_DELTA)
+
+  -- Offset the healthbar texts to be a bit higher than Blizzard's defaults
+  UnitFramesImproved:OffsetAnchor(healthBar.TextString, 0, HEALTH_BAR_TEXT_Y_DELTA)
+  UnitFramesImproved:OffsetAnchor(healthBar.LeftText, 0, HEALTH_BAR_TEXT_Y_DELTA)
+  UnitFramesImproved:OffsetAnchor(healthBar.RightText, 0, HEALTH_BAR_TEXT_Y_DELTA)
+
+  UnitFramesImproved:SetFontSize(healthBar.TextString, 14)
+  UnitFramesImproved:SetFontSize(healthBar.LeftText, 14)
+  UnitFramesImproved:SetFontSize(healthBar.RightText, 14)
+end
+
 function UnitFramesImproved:Style_PlayerFrame()
 	PlayerFrameHealthBar.healthbar = PlayerFrameHealthBar
 
@@ -15,21 +39,16 @@ function UnitFramesImproved:Style_PlayerFrame()
   -- None of this creates new regions (that's the only genuinely combat-restricted operation
   -- here) - it only resizes/repositions/recolors regions Blizzard's own template already
   -- created, so it doesn't need an InCombatLockdown guard.
-	healthBar.lockColor = true
-	healthBar.capNumericDisplay = true
-	healthBar:SetWidth(119)
-	healthBar:SetHeight(29)
-	UnitFramesImproved:OffsetAnchor(healthBar, 0, HEALTH_BAR_TEXTURE_Y_DELTA)
-
-  -- Offset the healthbar texts to be a bit higher than Blizzard's defaults
-	UnitFramesImproved:OffsetAnchor(healthBar.TextString, 0, HEALTH_BAR_TEXT_Y_DELTA)
-	UnitFramesImproved:OffsetAnchor(healthBar.LeftText, 0, HEALTH_BAR_TEXT_Y_DELTA)
-	UnitFramesImproved:OffsetAnchor(healthBar.RightText, 0, HEALTH_BAR_TEXT_Y_DELTA)
-
-  -- Style the manabar fontstrings
-  UnitFramesImproved:SetFontSize(healthBar.TextString, 14)
-  UnitFramesImproved:SetFontSize(healthBar.LeftText, 14)
-  UnitFramesImproved:SetFontSize(healthBar.RightText, 14)
+  --
+  -- Skip while seated in a vehicle: Blizzard's PlayerFrame_ToVehicleArt has already resized/
+  -- re-anchored this same bar to vehicle dimensions, and Style_PlayerFrame re-runs on every
+  -- PLAYER_ENTERING_WORLD/PLAYER_REGEN_ENABLED (e.g. combat ending while seated) - applying our
+  -- player-art dimensions on top of that would visibly misalign the bar against the vehicle
+  -- frame art. RestylePlayerHealthBarLayout gets reapplied via the PlayerFrame_ToPlayerArt hook
+  -- below the moment Blizzard itself returns the frame to player state.
+  if (PlayerFrame.state ~= "vehicle") then
+    RestylePlayerHealthBarLayout(healthBar)
+  end
 
   -- Set fonts sizes for PlayerFrameManabar
   UnitFramesImproved:SetFontSize(manaBar.TextString, 12)
@@ -55,6 +74,22 @@ function UnitFramesImproved:Style_PlayerFrame()
       hooksecurefunc(TextStatusBarMixin, "UpdateTextStringWithValues", UnitFramesImproved.UpdateTextStringWithValues)
       UnitFramesImproved.textStatusBarHooked = true
     end
+  end
+
+  -- Reapply our health bar layout the moment Blizzard returns PlayerFrame to player state (e.g.
+  -- exiting a vehicle), instead of waiting for the next incidental PLAYER_ENTERING_WORLD/
+  -- PLAYER_REGEN_ENABLED - otherwise the frame would show plain unstyled Blizzard UI for a while
+  -- after leaving a vehicle. No hook on PlayerFrame_ToVehicleArt: there is nothing of ours to
+  -- apply in vehicle state, so Blizzard's own vehicle skin is left untouched. Wrapped in a
+  -- closure rather than passed directly: PlayerFrame_ToPlayerArt(self) is called with self ==
+  -- PlayerFrame, and hooksecurefunc forwards that same argument to us - passing
+  -- RestylePlayerHealthBarLayout straight to hooksecurefunc would silently hand it PlayerFrame
+  -- where it expects the health bar.
+  if (not UnitFramesImproved.playerFrameVehicleArtHooked and PlayerFrame_ToPlayerArt) then
+    hooksecurefunc("PlayerFrame_ToPlayerArt", function()
+      RestylePlayerHealthBarLayout(PlayerFrameHealthBar)
+    end)
+    UnitFramesImproved.playerFrameVehicleArtHooked = true
   end
 
   -- Update the statusbar color to trigger it to show at load
