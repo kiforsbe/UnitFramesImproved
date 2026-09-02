@@ -1,0 +1,71 @@
+name: Bug report
+description: Something looks or behaves wrong in-game
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: flavor
+    attributes:
+      label: WoW version
+      description: Which client is this happening on?
+      options:
+        - Retail
+        - Mists of Pandaria Classic
+        - TBC Anniversary (Classic)
+        - Classic Era (Vanilla)
+    validations:
+      required: true
+
+  - type: input
+    id: addon-version
+    attributes:
+      label: UnitFramesImproved version
+      description: From CurseForge, the zip filename, or the addon list in-game.
+      placeholder: e.g. 1.4.2
+    validations:
+      required: true
+
+  - type: textarea
+    id: other-addons
+    attributes:
+      label: Other unit frame / UI addons enabled
+      description: >
+        UnitFramesImproved only reskins Blizzard's own frames, so most bugs
+        turn out to be a conflict with another addon touching the same
+        frames. List anything else enabled that touches unit frames, action
+        bars, or the general UI.
+      placeholder: e.g. ElvUI, Grid2, none
+
+  - type: checkboxes
+    id: isolated
+    attributes:
+      label: Isolation check
+      options:
+        - label: I reproduced this with only UnitFramesImproved (and its required libraries) enabled
+          required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs. actual behavior
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots / Lua error text
+      description: Paste any error text (e.g. from BugSack/BugGrabber) or attach a screenshot.
