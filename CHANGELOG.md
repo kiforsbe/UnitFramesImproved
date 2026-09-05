@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.0.2-universal] - 2026-09-05
+
+### Fixed
+- PlayerFrame health bar no longer misaligns against the vehicle frame art - Blizzard resizes/
+  re-anchors the same health bar for vehicle state (`PlayerFrame_ToVehicleArt`), and our own
+  styling re-runs on every `PLAYER_ENTERING_WORLD`/`PLAYER_REGEN_ENABLED` (e.g. combat ending
+  while seated), so it was clobbering Blizzard's vehicle-art dimensions with our player-art ones.
+  Our styling is now skipped while `PlayerFrame.state == "vehicle"` and reapplied immediately via
+  a `PlayerFrame_ToPlayerArt` hook the moment Blizzard returns the frame to player state.
+
 ## [4.0.1-universal] - 2026-09-01
 
 ### Fixed
