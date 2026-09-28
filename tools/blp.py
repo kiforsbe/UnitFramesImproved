@@ -1,6 +1,6 @@
 """Blizzard's BLP textures, to and from PNG, for editing the addon's art in an image editor.
 
-    export: BLP -> PNG. With no files given, every texture in Textures/, into tools/out/textures/
+    export: BLP -> PNG. With no files given, every texture in Textures/, into tools/out/textures/addon/
             (not next to them: build.ps1 ships everything in Textures/).
     import: PNG (or any image Pillow opens) -> BLP, into Textures/ under the same name, replacing
             the texture that's there.
@@ -14,7 +14,9 @@ of two (e.g. 256x128).
 Usage, from the repo root:
     python -m pip install -r tools/requirements.txt
     python tools/blp.py export [Textures/UI-TargetingFrame.blp ...] [--out-dir DIR]
-    python tools/blp.py import tools/out/textures/UI-TargetingFrame.png [...] [--out-dir DIR] [--encoding dxt3|dxt5|raw]
+    python tools/blp.py import tools/out/textures/addon/UI-TargetingFrame.png [...] [--out-dir DIR] [--encoding dxt3|dxt5|raw]
+
+The game's own textures for the unit frames, as BLP and PNG: see export_base_textures.py.
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ except ImportError:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEXTURES = REPO_ROOT / "Textures"
-EXPORT_DIR = REPO_ROOT / "tools" / "out" / "textures"
+EXPORT_DIR = REPO_ROOT / "tools" / "out" / "textures" / "addon"
 
 # magic, "type" (1: not JPEG), encoding, alpha depth, alpha encoding, has mipmaps, width, height,
 # then the offset and size of each of up to 16 mipmap levels. A 256-colour palette follows, unused
@@ -217,7 +219,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     to_png = commands.add_parser("export", help="BLP -> PNG")
     to_png.add_argument("files", nargs="*", type=Path, help="BLP files (default: all of Textures/)")
-    to_png.add_argument("--out-dir", type=Path, default=EXPORT_DIR, help="default: tools/out/textures")
+    to_png.add_argument("--out-dir", type=Path, default=EXPORT_DIR, help="default: tools/out/textures/addon")
     to_blp = commands.add_parser("import", help="PNG -> BLP")
     to_blp.add_argument("files", nargs="+", type=Path, help="images to convert")
     to_blp.add_argument("--out-dir", type=Path, default=TEXTURES, help="default: Textures/")

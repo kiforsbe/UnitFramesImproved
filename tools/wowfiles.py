@@ -360,6 +360,7 @@ class Listfile:
         self.path = cache_dir / "listfile-interface.csv"
         self.allow_download = allow_download
         self._ids: dict[str, int] | None = None
+        self._paths: dict[int, str] | None = None
         self._fresh = False
 
     def _load(self, download: bool) -> None:
@@ -369,7 +370,7 @@ class Listfile:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_bytes(http_get(LISTFILE, timeout=180))
             self._fresh = True
-        self._ids = {}
+        self._ids, self._paths = {}, None
         for line in self.path.read_text(encoding="utf-8").splitlines():
             fdid, _, name = line.partition(";")
             if name:
@@ -384,6 +385,20 @@ class Listfile:
         if key not in self._ids:
             raise MissingFile(f"{path} isn't in the listfile")
         return self._ids[key]
+
+    def find(self, path: str) -> int | None:
+        """Like fdid(), for paths that may well not exist: None, without downloading a fresh copy."""
+        if self._ids is None:
+            self._load(False)
+        return self._ids.get(path.replace("\\", "/").lower())
+
+    def path(self, fdid: int) -> str | None:
+        """The (lower case) path of a FileDataID, if the listfile has it."""
+        if self._ids is None:
+            self._load(False)
+        if self._paths is None:
+            self._paths = {value: key for key, value in self._ids.items()}
+        return self._paths.get(fdid)
 
 
 # --- DB2 tables -----------------------------------------------------------------------------------
