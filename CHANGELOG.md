@@ -20,9 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `export_base_textures.py` keeps local copies of the game's unit frame textures.
 
 ### Fixed
-- The zip and the release notes now use the hand-written `CHANGELOG.md`, which `.pkgmeta` now names
-  as the changelog. Without that, the packager puts a generated list of commits in the zip in its
-  place, and uses that list as the CurseForge changelog and GitHub release notes.
+- `.pkgmeta` names `CHANGELOG.md` as the changelog. The standard CurseForge packager now ships it and
+  uses it as the release notes, like `build.ps1` already did. Without that entry, the packager would
+  put a generated list of commits in its place.
 
 ## [4.1.0-universal] - 2026-09-28
 
