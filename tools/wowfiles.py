@@ -31,6 +31,7 @@ from string import ascii_uppercase
 
 WAGO = "https://wago.tools"
 WOWDBDEFS = "https://raw.githubusercontent.com/wowdev/WoWDBDefs/master/definitions/{table}.dbd"
+LISTFILE = "https://raw.githubusercontent.com/wowdev/wow-listfile/master/parts/interface.csv"
 
 LOCALE_ENUS = 0x2
 CONTENT_LOW_VIOLENCE = 0x80
@@ -347,6 +348,42 @@ def wago_latest(product: str) -> str | None:
             _wago_builds = {}
     builds = _wago_builds.get(product) or []
     return builds[0]["version"] if builds else None
+
+
+# --- File names -----------------------------------------------------------------------------------
+
+class Listfile:
+    """FileDataIDs by path under Interface/, from the community listfile (wowdev/wow-listfile).
+    Downloaded once and cached; downloaded again if a path isn't in the cached copy."""
+
+    def __init__(self, cache_dir: Path, allow_download: bool = True):
+        self.path = cache_dir / "listfile-interface.csv"
+        self.allow_download = allow_download
+        self._ids: dict[str, int] | None = None
+        self._fresh = False
+
+    def _load(self, download: bool) -> None:
+        if download or not self.path.exists():
+            if not self.allow_download:
+                raise MissingFile("no cached listfile, and downloads are off")
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_bytes(http_get(LISTFILE, timeout=180))
+            self._fresh = True
+        self._ids = {}
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            fdid, _, name = line.partition(";")
+            if name:
+                self._ids[name.lower()] = int(fdid)
+
+    def fdid(self, path: str) -> int:
+        key = path.replace("\\", "/").lower()
+        if self._ids is None:
+            self._load(False)
+        if key not in self._ids and not self._fresh and self.allow_download:
+            self._load(True)
+        if key not in self._ids:
+            raise MissingFile(f"{path} isn't in the listfile")
+        return self._ids[key]
 
 
 # --- DB2 tables -----------------------------------------------------------------------------------
