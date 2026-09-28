@@ -1,9 +1,10 @@
 """Unit frame art in every current version of World of Warcraft, with and without this addon.
 
-One row per frame and situation (the player, PvP flagged or not, and its status glow; the target,
-PvP flagged and too high level, and its elite / rare / boss looks; target of target; boss frames)
-and two columns per game version: Blizzard's own frames, and the same with UnitFramesImproved
-loaded. Each cell is what the code draws: which textures and atlases, cropped how, how big, where,
+One row per frame and situation (the player, PvP flagged or not, and its status glow; the target
+as a mob, as a player of your faction or the other, PvP flagged or not, and its elite / rare / boss
+looks; target of target; boss frames) and two columns per game version: Blizzard's own frames, and
+the same with UnitFramesImproved loaded. Which overlays show (PvP and faction icons, the skull) is
+decided by the code, Blizzard's and the addon's, from what the game API says about the unit. Each cell is what the code draws: which textures and atlases, cropped how, how big, where,
 and in what order all come from the Blizzard_UnitFrame XML and Lua in the build (see
 unitframe_ui.py), including the pieces some versions add over the frame, like WoW Forever's level
 circle and PvP badge. For the addon's column, the addon's own code from this checkout runs on top,
@@ -14,8 +15,9 @@ It also prints, for each texture the addon draws in place of Blizzard's, where i
 one it replaces, in on-screen coordinates (0,0 = the texture's top-left corner as drawn, one unit =
 one pixel at UI scale 1), and anything the addon did that couldn't be followed.
 
-The sheet is written to tools/out/ with the time and the addon's commit in its name, and on it
-(a "-dirty" name means the checkout had uncommitted changes), so runs can be compared.
+The sheet is written to tools/out/, named after the addon's commit ("-dirty" if the checkout had
+uncommitted changes), with the time added if a sheet by that name is already there. The commit and
+time are also on the sheet, so runs can be compared.
 
 Game files are read from your World of Warcraft folder (every installed version), and downloaded
 from wago.tools for versions that aren't installed. File paths are looked up in the community
@@ -81,8 +83,11 @@ ROWS = [  # keys into unitframe_ui.SHOTS
     ("player", "Player"),
     ("player_pvp", "Player:\nPvP flagged"),
     ("status", "Player status glow"),
-    ("target", "Target"),
-    ("target_pvp", "Target:\nPvP flagged,\nlevel too high"),
+    ("target", "Target: mob"),
+    ("target_ally", "Target: same-\nfaction player"),
+    ("target_pvp", "Target: same-\nfaction player,\nPvP flagged,\nlevel too high"),
+    ("target_enemy", "Target: opposite-\nfaction player"),
+    ("target_enemy_pvp", "Target: opposite-\nfaction player,\nPvP flagged"),
     ("elite", "Target: elite"),
     ("rare", "Target: rare"),
     ("rareelite", "Target: rare elite"),
@@ -433,7 +438,7 @@ def report_differences(columns: list[Column], args: argparse.Namespace) -> None:
             key = (digest(theirs.texture), digest(mine.texture), mine.crop)
             if key not in compared:
                 compared[key] = (theirs, mine, [])
-            compared[key][2].append((label.replace("\n", " "), column.group))
+            compared[key][2].append((label.replace("-\n", "-").replace("\n", " "), column.group))
     if not compared:
         print("    none: no row draws one of the addon's textures")
     for theirs, mine, uses in compared.values():
@@ -589,15 +594,24 @@ def git(*args: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def stamp() -> tuple[str, str]:
-    """(for the file name, for the sheet): when it was made, and from which commit of the addon."""
-    now = datetime.now()
+def stamp(now: datetime) -> tuple[str, str]:
+    """(for the file name, for the sheet): which commit of the addon, and for the sheet also when."""
     commit = git("rev-parse", "--short", "HEAD")
     dirty = bool(git("status", "--porcelain"))
     if commit is None:
-        return f"{now:%Y%m%d-%H%M%S}-no-git", f"{MINE_TITLE} (not a git checkout) · {now:%Y-%m-%d %H:%M:%S}"
-    return (f"{now:%Y%m%d-%H%M%S}-{commit}" + ("-dirty" if dirty else ""),
+        return "no-git", f"{MINE_TITLE} (not a git checkout) · {now:%Y-%m-%d %H:%M:%S}"
+    return (commit + ("-dirty" if dirty else ""),
             f"{MINE_TITLE} @ {commit}" + (" + uncommitted changes" if dirty else "") + f" · {now:%Y-%m-%d %H:%M:%S}")
+
+
+def sheet_path(out_dir: Path, tag: str, now: datetime) -> Path:
+    """Named after the commit; if there's already a sheet for it (say, with other uncommitted
+    changes), the time goes in the name too."""
+    for suffix in ("", f"-{now:%y%m%d-%H%M}", f"-{now:%y%m%d-%H%M%S}"):
+        path = out_dir / f"unitframe-art-comparison-{tag}{suffix}.png"
+        if not path.exists():
+            return path
+    return path
 
 
 def main() -> None:
@@ -611,7 +625,8 @@ def main() -> None:
     parser.add_argument("--open", action="store_true", help="open the sheet when done")
     args = parser.parse_args()
 
-    file_stamp, sheet_stamp = stamp()
+    now = datetime.now()
+    tag, sheet_stamp = stamp(now)
     print(sheet_stamp)
     wow_dir = args.wow_dir or wowfiles.find_wow_dir()
     install = wowfiles.LocalInstall(wow_dir) if wow_dir else None
@@ -649,8 +664,8 @@ def main() -> None:
     report_differences(columns, args)
     report_unused(used)
 
-    out = args.out_dir / f"unitframe-art-comparison-{file_stamp}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    out = sheet_path(args.out_dir, tag, now)
     compose(columns, args.scale, sheet_stamp).save(out)
     print(f"\nWrote {out}")
     if args.open:

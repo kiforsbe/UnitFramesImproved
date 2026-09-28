@@ -71,40 +71,43 @@ class Shot:
     keys: frozenset[str]
     calls: tuple[str, ...] = ()     # run after the frame's OnLoad: its mixins' methods, or global functions
     classification: str = "normal"
-    pvp: bool = False               # PvP flagged (Alliance), and too high level to show the level
+    faction: str | None = None      # the unit's; None is a mob. Seen by an Alliance player, so Horde is an enemy.
+    pvp: bool = False               # PvP flagged
+    level: int = 60                 # -1: too high to tell, like a boss
     host: str | None = None         # the frame whose code creates this one, when the XML doesn't
     force: frozenset[str] = frozenset()   # shown even though nothing in the situation's code shows them
     follow: frozenset[str] = frozenset()  # methods also followed when called as statements
 
 
-HIGH_LEVEL = frozenset({"highleveltexture"})   # shown by the level update, which isn't run
 STATUS = frozenset({"statustexture"})          # shown while resting or in combat
 
 
-def _target(classification: str = "normal", pvp: bool = False) -> Shot:
-    # The frame's Update decides whether to check the classification (boss frames don't).
-    follow = frozenset({"CheckClassification"} | ({"CheckFaction"} if pvp else set()))
-    return Shot("TargetFrame", FRAME_ART | (PVP_ART if pvp else frozenset()), ("Update",), classification, pvp,
-                force=HIGH_LEVEL if pvp else frozenset(), follow=follow)
+def _target(classification: str = "normal", faction: str | None = None, pvp: bool = False,
+            high_level: bool = False) -> Shot:
+    # The frame's Update decides whether to check the classification (boss frames don't), and its
+    # level and faction checks which of the skull and the PvP / faction icon show.
+    level = -1 if high_level or classification == "worldboss" else 60
+    return Shot("TargetFrame", FRAME_ART | PVP_ART, ("Update",), classification, faction, pvp, level,
+                follow=frozenset({"CheckClassification", "CheckLevel", "CheckFaction"}))
 
 
 SHOTS = {
-    "player": Shot("PlayerFrame", FRAME_ART),
-    "player_pvp": Shot("PlayerFrame", FRAME_ART | PVP_ART, ("PlayerFrame_UpdatePvPStatus",), pvp=True),
-    "status": Shot("PlayerFrame", STATUS, force=STATUS),
+    "player": Shot("PlayerFrame", FRAME_ART, faction="Alliance"),
+    "player_pvp": Shot("PlayerFrame", FRAME_ART | PVP_ART, ("PlayerFrame_UpdatePvPStatus",), faction="Alliance", pvp=True),
+    "status": Shot("PlayerFrame", STATUS, faction="Alliance", force=STATUS),
     "target": _target(),
-    "target_pvp": _target(pvp=True),
+    "target_ally": _target(faction="Alliance"),
+    "target_pvp": _target(faction="Alliance", pvp=True, high_level=True),
+    "target_enemy": _target(faction="Horde"),
+    "target_enemy_pvp": _target(faction="Horde", pvp=True),
     "elite": _target("elite"),
     "rare": _target("rare"),
     "rareelite": _target("rareelite"),
     "worldboss": _target("worldboss"),
     "tot": Shot("TargetFrameToT", FRAME_ART, host="TargetFrame"),
-    "boss": Shot("Boss1TargetFrame", FRAME_ART, ("Update",), "worldboss", follow=frozenset({"CheckClassification"})),
+    "boss": Shot("Boss1TargetFrame", FRAME_ART, ("Update",), "worldboss", level=-1,
+                 follow=frozenset({"CheckClassification"})),
 }
-
-# Mainline shows the PvP flag through UnitFrameUtil, with the art in the build's PvPIndicatorStyle
-# table, on the textures the frame's GetPvPIndicatorElements returns.
-PVP_ELEMENTS = ("GetPvPIndicatorElements", "PlayerFrame_GetPvPIndicatorElements")
 
 UI_FILE = re.compile(r"(?:^|/)(?:PlayerFrame|TargetFrame(?!Aura)|UnitFramePvPIndicatorStyle)\w*\.(?:xml|lua)$", re.I)
 
@@ -324,10 +327,17 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size, addon: Addon | Non
     api = {
         "UnitClassification": shot.classification,
         "UnitIsBossMob": shot.classification == "worldboss",
-        "UnitFactionGroup": "Alliance" if shot.pvp else None,   # otherwise a mob, which has no faction
+        # Answered the same whichever unit is asked about: the frame's own.
+        "UnitFactionGroup": shot.faction,
         "UnitIsPVP": shot.pvp,
         "UnitIsPVPFreeForAll": False,
-        "UnitIsEnemy": False,                # seen by an Alliance player
+        "UnitIsEnemy": shot.faction == "Horde",   # seen by an Alliance player
+        "UnitCanAttack": shot.faction == "Horde",
+        "UnitLevel": shot.level,
+        "UnitEffectiveLevel": shot.level,
+        "UnitIsCorpse": False,
+        "UnitIsWildBattlePet": False,
+        "UnitIsBattlePetCompanion": False,
         "UnitIsMercenary": False,
         "C_PvP.GetHonorRewardInfo": None,   # no prestige portrait: the plain faction icon
         "UnitExists": True,
@@ -347,8 +357,6 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size, addon: Addon | Non
     context.run_script("OnLoad")
     for name in shot.calls:
         context.call(name)
-    if shot.pvp:
-        context.pvp_indicator()
     if addon is not None:
         context.fire_addon_events()
         if skipped is not None:
@@ -1236,6 +1244,11 @@ class Parser:
             return [self.context.api[path]]
         if path == "CreateFrame":
             return [self.context.ui.create(*(args + [None] * 4)[:4])]
+        if path == "UnitFrameUtil.GetUnitPvPIndicatorDisplayInfo":
+            return [self.context.pvp_indicator_info()]
+        if path == "UnitFrameUtil.UpdateUnitPvPIndicator":
+            self.context.update_pvp_indicator(args[0] if args else None)
+            return []
         if path == "hooksecurefunc":   # the hook would run later, inside Blizzard's function
             hooked = next((arg for arg in args if isinstance(arg, str)), "?")
             self.context.skip(f"hooksecurefunc {hooked}")
@@ -1426,20 +1439,37 @@ class Context:
             elif (script.text or "").strip():
                 self.lua.run_snippet(script.text, self)
 
-    def pvp_indicator(self) -> None:
-        style = self.lua.tables.get("PvPIndicatorStyle")
-        if not style:
+    # WoW Forever's frames show the PvP flag through UnitFrameUtil (Shared/UnitFrameUtil.lua), whose
+    # functions are secure delegates built on texture metatables, which this doesn't run. These two
+    # make the same decisions from the same API answers, with the art in the build's
+    # PvPIndicatorStyle table. There's no prestige: C_PvP.GetHonorRewardInfo answers None.
+
+    def pvp_indicator_info(self) -> dict:
+        style = self.lua.tables.get("PvPIndicatorStyle") or {}
+        faction = self.api.get("UnitFactionGroup")
+        atlas = None
+        if not truthy(self.api.get("C_GameRules.IsGameRuleActive")):
+            if truthy(self.api.get("UnitIsPVPFreeForAll")):
+                atlas = style.get("ffaIconAtlas")
+            elif faction in ("Alliance", "Horde") and truthy(self.api.get("UnitIsPVP")):
+                atlas = style.get(f"{faction.lower()}IconAtlas")
+        return {"pvpIconAtlas": atlas or "", "showPvPIcon": atlas is not None, "showPrestigePortrait": False,
+                "showPrestigeBadge": False, "showPvPBackground": atlas is not None and truthy(style.get("usesBackground")),
+                "isFreeForAll": truthy(self.api.get("UnitIsPVPFreeForAll"))}
+
+    def update_pvp_indicator(self, elements) -> None:
+        """UnitFrameUtil.UpdateUnitPvPIndicator(elements, unit): elements is the frame's own
+        {pvpIcon, pvpBackground, prestigePortrait, prestigeBadge}."""
+        if not isinstance(elements, dict):
             return
-        for name in PVP_ELEMENTS:
-            returned = self.call(name)
-            if returned and isinstance(returned[0], dict):
-                elements = returned[0]
-                break
-        else:
-            return
-        icon, background = elements.get("pvpIcon"), elements.get("pvpBackground")
-        if isinstance(icon, Region) and style.get("allianceIconAtlas"):
-            icon.atlas, icon.file, icon.fdid = style["allianceIconAtlas"], None, None
-            icon.size_atlas, icon.shown = icon.atlas, True
-        if isinstance(background, Region):
-            background.shown = truthy(style.get("usesBackground"))
+        info = self.pvp_indicator_info()
+        icon = elements.get("pvpIcon")
+        if isinstance(icon, Region):
+            if info["showPvPIcon"]:
+                icon.atlas, icon.file, icon.fdid = info["pvpIconAtlas"], None, None
+                icon.size_atlas = icon.atlas
+            icon.shown = info["showPvPIcon"]
+        for key, shown in (("pvpBackground", info["showPvPBackground"]), ("prestigePortrait", False),
+                           ("prestigeBadge", False)):
+            if isinstance(elements.get(key), Region):
+                elements[key].shown = shown
