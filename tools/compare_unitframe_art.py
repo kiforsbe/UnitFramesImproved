@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import os
 import struct
 import subprocess
@@ -46,6 +45,7 @@ try:
 except ImportError:
     sys.exit("Pillow is missing: python -m pip install -r tools/requirements.txt")
 
+import blp
 import unitframe_ui
 import wowfiles
 from unitframe_ui import MAIN_ART, FrameArt, Loaded, Piece
@@ -105,15 +105,9 @@ HUD = "UI-HUD-UnitFrame-"
 # --- Reading the game's art -----------------------------------------------------------------------
 
 def decode(data: bytes) -> Image.Image:
-    # Pillow can't read BLP2 encoding 3 (raw BGRA, used by newer atlases): the first mipmap is
-    # just the pixels, at the offset in the header.
-    if data[:4] == b"BLP2" and data[8] == 3:
-        width, height = struct.unpack_from("<II", data, 12)
-        offset = struct.unpack_from("<I", data, 20)[0]
-        return Image.frombytes("RGBA", (width, height), data[offset:offset + width * height * 4], "raw", "BGRA")
     try:
-        return Image.open(io.BytesIO(data)).convert("RGBA")
-    except (OSError, ValueError, NotImplementedError) as error:
+        return blp.read(data)
+    except (OSError, ValueError, NotImplementedError, struct.error) as error:
         raise MissingFile(f"can't decode the texture: {error}") from error
 
 
