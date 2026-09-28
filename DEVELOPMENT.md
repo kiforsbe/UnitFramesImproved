@@ -36,6 +36,21 @@ python -m unittest discover -s tests -v
 
 See [tests/README.md](tests/README.md) for how the stubs work and what still needs an in-game check.
 
+## Art Tools
+`tools/` holds Python scripts for working on the frame art (`pip install -r tools/requirements.txt`).
+They read game files from your local World of Warcraft install, and from wago.tools for versions
+that aren't installed, and write to `tools/out/`, which git ignores. Each script's `--help` has the
+details.
+
+- `compare_unitframe_art.py` draws the unit frames of every current WoW version, with and without
+  the addon, into one sheet. The addon's code runs as it is in the checkout, so edits show up on the
+  next run, and the sheet is named after the commit.
+- `blp.py` converts between BLP and PNG: `export` turns `Textures/` into PNGs in
+  `tools/out/textures/addon/`, and `import` turns edited PNGs back into BLPs in `Textures/`.
+- `export_base_textures.py` saves each distinct texture the game's own unit frames use, across all
+  versions, as `.blp` and `.png` in `tools/out/textures/blizzard/`, with an `index.txt`. That's
+  Blizzard's art: keep it out of the repo.
+
 ## Releasing
 [.github/workflows/release.yml](.github/workflows/release.yml) runs the real [CurseForge
 packager](https://github.com/BigWigsMods/packager) against `.pkgmeta` - it builds the zip, stamps a

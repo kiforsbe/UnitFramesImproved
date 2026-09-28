@@ -392,7 +392,7 @@ class Listfile:
             self._load(False)
         return self._ids.get(path.replace("\\", "/").lower())
 
-    def path(self, fdid: int) -> str | None:
+    def path_of(self, fdid: int) -> str | None:
         """The (lower case) path of a FileDataID, if the listfile has it."""
         if self._ids is None:
             self._load(False)

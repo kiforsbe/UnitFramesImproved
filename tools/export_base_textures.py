@@ -41,6 +41,8 @@ from wowfiles import MissingFile
 OUT_DIR = compare.OUT_DIR / "textures" / "blizzard"
 STRING = re.compile(r'"([^"\r\n]{3,200})"|\'([^\'\r\n]{3,200})\'')   # in the XML and the Lua
 NOT_TEXTURES = (".lua", ".xml", ".toc")
+# Right before a string that's an atlas name: an XML atlas="", SetAtlas(, or a field like hordeIconAtlas =
+ATLAS_CONTEXT = re.compile(r"(?:atlas\s*=\s*|SetAtlas\(\s*)$", re.I)
 
 
 @dataclass
@@ -95,7 +97,8 @@ def named(source, listfile, variant, art: compare.Art) -> list[Use]:
     files = unitframe_ui.UIFiles(source.files, listfile)
     uses = []
     for _, content in files.in_load_order([path for path in paths if unitframe_ui.UI_FILE.search(path)]):
-        for match in STRING.finditer(content.decode("utf-8", "replace")):
+        text = content.decode("utf-8", "replace")
+        for match in STRING.finditer(text):
             value = (match.group(1) or match.group(2)).replace("\\\\", "\\")
             if value.lower().startswith("interface") and ("\\" in value or "/" in value):
                 if value.lower().endswith(NOT_TEXTURES):
@@ -105,6 +108,10 @@ def named(source, listfile, variant, art: compare.Art) -> list[Use]:
                 if fdid:
                     uses.append(Use(fdid, stem(value), "named"))
                 continue
+            # Plain words like "target" or "background" are atlas names too: only take those where
+            # an atlas goes, or that look like one.
+            if not (ATLAS_CONTEXT.search(text, max(0, match.start() - 40), match.start()) or re.search(r"[-_]", value)):
+                continue
             try:
                 uses.append(Use(art.atlases.fdid(value), None, "named", value))
             except (MissingFile, KeyError):
@@ -112,9 +119,16 @@ def named(source, listfile, variant, art: compare.Art) -> list[Use]:
     return uses
 
 
-def atlas_box(art: compare.Art, name: str) -> tuple[int, int, int, int]:
+def atlas_box(art: compare.Art, name: str) -> tuple[str, tuple[int, int, int, int]]:
+    """The atlas the game draws for the name (WoW Forever's "-c60" copy, where there is one), and where it is."""
     member = art.atlases.member(name)
-    return (member["CommittedLeft"], member["CommittedTop"], member["CommittedRight"], member["CommittedBottom"])
+    return member["CommittedName"], (member["CommittedLeft"], member["CommittedTop"],
+                                     member["CommittedRight"], member["CommittedBottom"])
+
+
+def add_name(names: list[str], name: str) -> None:
+    if name.lower() not in (known.lower() for known in names):
+        names.append(name)
 
 
 def collect(args: argparse.Namespace) -> dict[str, Texture]:
@@ -144,7 +158,7 @@ def collect(args: argparse.Namespace) -> dict[str, Texture]:
                     raise MissingFile(str(content) if content else "not in the build")
                 image = blp.read(content)
             except (MissingFile, OSError, ValueError, NotImplementedError) as error:
-                print(f"{variant.title}: FileDataID {fdid} ({listfile.path(fdid) or 'not in the listfile'}): {error}")
+                print(f"{variant.title}: FileDataID {fdid} ({listfile.path_of(fdid) or 'not in the listfile'}): {error}")
                 continue
             key = hashlib.sha1(image.tobytes() + repr(image.size).encode()).hexdigest()
             texture = textures.setdefault(key, Texture(content, image))
@@ -152,22 +166,20 @@ def collect(args: argparse.Namespace) -> dict[str, Texture]:
             if variant.title not in texture.versions:
                 texture.versions.append(variant.title)
             texture.fdids.add(fdid)
-            for use in uses:
+            for use in uses:   # names from the code first: the listfile's are in lower case
                 if use.fdid != fdid:
                     continue
                 texture.how.add(use.how)
-                if use.name and use.name not in texture.names:
-                    texture.names.insert(sum(1 for name in texture.names if name != name.lower()), use.name)
+                if use.name:
+                    add_name(texture.names, use.name)
                 if use.atlas:
                     try:
-                        texture.atlases.setdefault(use.atlas, atlas_box(art, use.atlas))
+                        name, box = atlas_box(art, use.atlas)
+                        texture.atlases.setdefault(name, box)
                     except MissingFile:
                         pass
-            path = listfile.path(fdid)
-            if path and stem(path) not in texture.names:
-                texture.names.append(stem(path))
-            if not texture.names:
-                texture.names.append(str(fdid))
+            path = listfile.path_of(fdid)
+            add_name(texture.names, stem(path) if path else str(fdid))
         print(f"{variant.title}: {subtitle}: {count} textures")
     return textures
 
