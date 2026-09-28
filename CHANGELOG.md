@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- WoW Forever support: `UnitFramesImproved_Camelot.toc` (`## Interface: 16001`). Forever's game
+  type is "Camelot" in Blizzard's UI code, and `_Camelot.toc` is the suffix both the client and the
+  CurseForge packager pick up for it. Forever runs Retail's Mainline unit frame templates (plus small
+  Camelot-only overrides that don't touch anything styled here), so it loads the Retail styler
+  unchanged.
+- Options page (Options -> AddOns -> UnitFramesImproved, also opened by `/ufi`) built on Blizzard's
+  native Settings API, with a **Status Text** dropdown (Numeric Value / Percentage / Both / None) -
+  WoW Forever has no visible setting for showing health/mana numbers on the unit frames. It's backed
+  by the same `statusText`/`statusTextDisplay` CVars as Blizzard's own Status Text option, so the two
+  stay in sync on every client. Changes picked in combat or under an addon restriction (encounter,
+  Mythic+, PvP match, restricted map) are held until it ends, since the CVar change runs Blizzard's
+  status bar updates synchronously from addon code, where a secret health/power value would error.
+- `build.ps1` deploys to `_classic_beta_` (the WoW Forever beta install) too.
+- `tests/`: offline regression tests (Python + `lupa`, a real Lua 5.1 runtime) that load the addon
+  into a stubbed WoW client once per TOC and check loading, events, styling, the options page, and
+  packaging. Never loaded in game or packaged.
+
+### Changed
+- Removed the Ace3/LibStub dependency (AceAddon, AceEvent, AceConsole, CallbackHandler). Events now
+  go through one private event frame and slash commands through `SlashCmdList` - Blizzard's own APIs,
+  identical on every client. No more `.pkgmeta` externals, `Libs/` folder, `LICENSE-ACE3.txt`, or
+  library fetching in `build.ps1` (which still recognizes the old `Libs/`/`LICENSE-ACE3.txt` when
+  replacing a previous deploy).
+- `/ufi` and `/unitframesimproved` now open the options page instead of printing a message.
+- The "Initializing... / Initialized." chat lines on every login are gone (they came from the Ace3
+  `OnInitialize` hook).
+
+### Fixed
+- Retail: stopped writing `forceShow`/`textLockable` onto `PlayerFrame`/`TargetFrame`/`FocusFrame`.
+  Nothing reads those on the unit frame (Blizzard's text logic reads them on the status bar), so they
+  never forced the text visible - they only wrote addon fields onto Blizzard's secure frames.
+
 ## [4.0.2-universal] - 2026-09-05
 
 ### Fixed

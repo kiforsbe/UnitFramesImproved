@@ -17,30 +17,27 @@ Blizzard's own updates.
 
 | File | Role |
 |---|---|
-| `UnitFramesImproved.toc` / `_Classic.toc` / `_Vanilla.toc` | Per-client TOC files - see [Client split](#client-split) |
-| `UnitFramesImproved.lua` | Shared logic: Ace3 addon setup, event handlers, `UpdateStatusBarColor`, `UnitColor`, `OffsetAnchor`, other small helpers used by both client stylers |
-| `UnitFramesImproved_Retail.lua` | `Style_PlayerFrame`/`Style_TargetFrame`/`Style_ToTFrame` for Retail's nested `PlayerFrameContent`-style templates |
+| `UnitFramesImproved.toc` / `_Camelot.toc` / `_Mists.toc` / `_TBC.toc` / `_Vanilla.toc` | Per-client TOC files - see [Client split](#client-split) |
+| `UnitFramesImproved.lua` | Shared logic: addon table, event frame + slash commands, event handlers, `UpdateStatusBarColor`, `UnitColor`, `OffsetAnchor`, other small helpers used by both client stylers |
+| `UnitFramesImproved_Retail.lua` | `Style_PlayerFrame`/`Style_TargetFrame`/`Style_ToTFrame` for the Mainline nested `PlayerFrameContent`-style templates (Retail and WoW Forever) |
 | `UnitFramesImproved_Classic.lua` | Same three functions for the Classic family (Classic Era/Vanilla and Classic progression), which still use the pre-Dragonflight flat, global-named frame templates |
+| `UnitFramesImproved_Options.lua` | The options page (Settings API) and its Status Text option - see [Options](#options) |
 | `HelperFunctions.lua` | `dout`/`DebugPrint`/`DebugPrintf` chat/debug-log output, `print_r` table dump |
 | `Textures/` | Custom `.blp` textures (targeting frame variants, player status) |
-| `Libs/` | Ace3 + LibStub, fetched as externals at package/build time - not committed (see [Build & packaging](#build--packaging)) |
+| `tests/` | Offline regression tests against a stubbed WoW client - never loaded or packaged, see [tests/README.md](tests/README.md) |
 
-Load order is declared per TOC file and is the same shape in all three - shared code first, then
-the one client-specific styler file:
+Load order is declared per TOC file and is the same shape in all of them - shared code first, then
+the one client-specific styler file, then the (shared) options page:
 
 ```mermaid
 flowchart LR
-    subgraph R["UnitFramesImproved.toc (mainline)"]
+    subgraph M["UnitFramesImproved.toc (Retail) / _Camelot.toc (WoW Forever)"]
         direction LR
-        H1[HelperFunctions.lua] --> S1[UnitFramesImproved.lua] --> F1[UnitFramesImproved_Retail.lua]
+        H1[HelperFunctions.lua] --> S1[UnitFramesImproved.lua] --> F1[UnitFramesImproved_Retail.lua] --> O1[UnitFramesImproved_Options.lua]
     end
-    subgraph C["UnitFramesImproved_Mists.toc (classic)"]
+    subgraph C["_Mists.toc / _TBC.toc / _Vanilla.toc (Classic family)"]
         direction LR
-        H2[HelperFunctions.lua] --> S2[UnitFramesImproved.lua] --> F2[UnitFramesImproved_Classic.lua]
-    end
-    subgraph V["UnitFramesImproved_Vanilla.toc (vanilla)"]
-        direction LR
-        H3[HelperFunctions.lua] --> S3[UnitFramesImproved.lua] --> F3[UnitFramesImproved_Classic.lua]
+        H2[HelperFunctions.lua] --> S2[UnitFramesImproved.lua] --> F2[UnitFramesImproved_Classic.lua] --> O2[UnitFramesImproved_Options.lua]
     end
 ```
 
@@ -55,15 +52,36 @@ them (event wiring, color logic, the anchor-offset helper); everything that touc
 path lives in the client-specific file.
 
 Classic Era/Vanilla and Classic progression share `UnitFramesImproved_Classic.lua` - they run the
-same underlying flat-template UI, just gated by a different `AllowLoadGameType` per TOC file. When
-Blizzard changes something between Classic client builds (see the recent `TextStatusBarMixin`
-migration below), the code branches at runtime on what's actually present rather than forking the
-file per client build.
+same underlying flat-template UI, just with a different per-client TOC file. When Blizzard changes
+something between Classic client builds (see the recent `TextStatusBarMixin` migration below), the
+code branches at runtime on what's actually present rather than forking the file per client build.
+
+Which files load is decided purely by which TOC the client picks - each client loads the TOC with
+its own suffix and falls back to the unsuffixed `UnitFramesImproved.toc`:
+
+| Client | TOC | Interface | Styler |
+|---|---|---|---|
+| Retail | `UnitFramesImproved.toc` | 12xxxx | `_Retail.lua` |
+| WoW Forever | `UnitFramesImproved_Camelot.toc` | 16xxx | `_Retail.lua` |
+| Mists of Pandaria Classic | `UnitFramesImproved_Mists.toc` | 50xxx | `_Classic.lua` |
+| TBC Anniversary | `UnitFramesImproved_TBC.toc` | 20xxx | `_Classic.lua` |
+| Classic Era | `UnitFramesImproved_Vanilla.toc` | 11xxx | `_Classic.lua` |
+
+**WoW Forever** (the "Camelot" game type in Blizzard's own UI code and TOC tags, installed under
+`_classic_beta_` during its beta) is a Classic-era game built on Retail's Mainline UI: it shares
+Midnight's API set, including Secret Values, and its unit frames are the Mainline templates with a
+small set of Camelot overrides on top (level/PvP circles, boss/rare portrait art -
+`Blizzard_UnitFrame/Camelot/` in its UI source). Nothing this addon styles is touched by those
+overrides, so Forever runs `UnitFramesImproved_Retail.lua` unchanged. Its TOC suffix is `_Camelot`
+(what both the client and the CurseForge packager look for); if a client ever doesn't recognize it,
+it falls back to the unsuffixed Retail TOC, which loads the same styler.
 
 ## Lifecycle
 
-1. `OnInitialize` (Ace3) registers `PLAYER_TARGET_CHANGED`, `PLAYER_FOCUS_CHANGED`, `UNIT_TARGET`,
-   and the `/ufi` chat command.
+1. At load, `UnitFramesImproved.lua` registers `PLAYER_ENTERING_WORLD`, `PLAYER_REGEN_ENABLED`,
+   `PLAYER_TARGET_CHANGED`, `PLAYER_FOCUS_CHANGED` and `UNIT_TARGET` on one private event frame
+   (each dispatched to the addon method of the same name), and `/ufi` + `/unitframesimproved`
+   through `SlashCmdList`. `UnitFramesImproved_Options.lua` then registers the options page.
 2. `LoadConfig` runs on `PLAYER_ENTERING_WORLD` (fires on login *and* every zone/loading screen) and
    on `PLAYER_REGEN_ENABLED` (leaving combat - see [Combat lockdown](#combat-lockdown--taint-safety)).
    It calls each `Style_*Frame` function and is safe to call repeatedly: `OffsetAnchor` caches its
@@ -80,8 +98,8 @@ sequenceDiagram
     participant UFI as UnitFramesImproved
     participant Blizz as Blizzard Frame Code
 
-    WoW->>UFI: ADDON_LOADED / OnInitialize (Ace3)
-    UFI->>UFI: Register PLAYER_TARGET_CHANGED,<br/>PLAYER_FOCUS_CHANGED, UNIT_TARGET, /ufi
+    WoW->>UFI: Load TOC files (UnitFramesImproved.lua, styler, options)
+    UFI->>UFI: Register events on private frame,<br/>/ufi via SlashCmdList, options page via Settings
 
     WoW->>UFI: PLAYER_ENTERING_WORLD (login, or any zone/loading screen)
     UFI->>UFI: LoadConfig()
@@ -174,15 +192,60 @@ Blizzard's own native health-bar update keeps recoloring the bar on every health
 addon's class-color `SetStatusBarColor` call almost immediately. `lockColor` tells that native update
 to skip its own coloring, leaving the addon's call as the only one that actually sticks.
 
+## Options
+
+`UnitFramesImproved_Options.lua` registers **Options -> AddOns -> UnitFramesImproved** (also opened
+by `/ufi`) with Blizzard's own Settings API (`Settings.RegisterVerticalLayoutCategory`,
+`RegisterProxySetting`, `CreateDropdown`, `RegisterAddOnCategory`, `OpenToCategory`) - the same API
+Blizzard's own options pages are built on. It's the standard way for addons to add options since
+Dragonflight; the old `InterfaceOptions_AddCategory` path doesn't exist at all in Midnight's or WoW
+Forever's UI code. Every client this addon ships to has the same Settings API with the same
+signatures, so the file is shared rather than split per client, and it bails out early if the API
+is ever missing.
+
+Its one option, **Status Text**, exists because WoW Forever has no visible setting for showing
+health/mana numbers on the unit frames. It's a re-exposed copy of Blizzard's own Status Text
+dropdown (`Blizzard_SettingsDefinitions_Frame/Interface.lua`): same four values, same default, and
+backed by the same two CVars (`statusTextDisplay` for the mode, `statusText` for on/off) rather
+than by addon saved variables. Blizzard's status bars already read those CVars on every update, so
+the option works on every client without the addon touching Blizzard's frames - and it stays in
+sync with Blizzard's own dropdown wherever that still exists.
+
+The addon's `setValue` runs addon-tainted, and `CVAR_UPDATE` is a synchronous event: Blizzard's
+`TextStatusBarMixin` handler for `statusText` runs *inside* our `SetCVar` call, still tainted, and
+compares health/power values - which errors if one of them is secret at that moment. So:
+
+- A CVar is only written if its value actually changes.
+- While in combat, or while any addon restriction under which values can be secret is active
+  (`C_RestrictedActions.IsAddOnRestrictionActive` for Combat/Encounter/ChallengeMode/PvPMatch/Map),
+  the choice is held as pending instead (the dropdown shows it, and chat says it'll apply later).
+  It's applied on `PLAYER_REGEN_ENABLED` / `ADDON_RESTRICTION_STATE_CHANGED`, re-checked one frame
+  later via `C_Timer.After(0, ...)` - that event also fires just *before* a restriction activates,
+  and `IsAddOnRestrictionActive` reports false throughout its dispatch.
+
+The Retail stylers used to write `forceShow`/`textLockable` onto `PlayerFrame`/`TargetFrame` meaning
+to force the text visible. Nothing reads those fields on the unit frame (only `TextStatusBarMixin`
+reads them, on the bar itself), so they did nothing except write addon fields onto Blizzard's
+frames - they're gone; showing the numbers is the Status Text option's job.
+
+## Dependencies
+
+None. The addon used to embed Ace3 (AceAddon/AceEvent/AceConsole, plus LibStub and
+CallbackHandler), but only ever used it for what Blizzard's own API does directly on every client:
+one frame with `RegisterEvent`/`OnEvent` for events, and `SLASH_*` + `SlashCmdList` for slash
+commands. The options page uses Blizzard's Settings API rather than AceConfig/AceGUI. Dropping the
+libraries removed the `.pkgmeta` externals, the `Libs/` folder, and `build.ps1`'s library fetching.
+
 ## Build & packaging
 
-`.pkgmeta` declares `Libs/` (LibStub, CallbackHandler-1.0, and the three Ace3 modules actually used)
-as SVN externals - the CurseForge packager fetches them at release time, so they're intentionally
-not committed (`Libs/` is gitignored). `build.ps1` is a local stand-in for that packager: it fetches
-the same externals over plain HTTP, stages a build into `deploy\UnitFramesImproved`, optionally
+There are no externals: `.pkgmeta` just names the package and lists what not to ship (`build.ps1`,
+`deploy`, `tests`, the developer docs). `build.ps1` is a local stand-in for the CurseForge packager:
+it stages a build into `deploy\UnitFramesImproved`, optionally
 copies that build into a local WoW install's `Interface\AddOns` (see `-DeployToWow` below), and
 stamps the `@project-version@`/`@project-date-iso@` TOC tokens from `git describe` (falling back to
-`dev` outside a git checkout). See its own `Get-Help .\build.ps1 -Full` for parameters.
+`dev` outside a git checkout). See its own `Get-Help .\build.ps1 -Full` for parameters. It copies
+only the files it lists explicitly (`$SourceItems`), so anything else in the repo - `tests/`
+included - never reaches a build; a test checks that list against the TOCs.
 
 ```mermaid
 flowchart LR

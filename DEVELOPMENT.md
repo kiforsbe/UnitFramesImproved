@@ -4,9 +4,8 @@ Building from source and cutting a release for UnitFramesImproved. See [README.m
 what the addon does, and [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is structured.
 
 ## Building From Source
-`build.ps1` (PowerShell) is a local stand-in for the CurseForge packager - it fetches the same
-Ace3/LibStub externals declared in `.pkgmeta` (cached in the gitignored `Libs/` folder after the
-first run), stages a build into `deploy\UnitFramesImproved`, stamps the
+`build.ps1` (PowerShell) is a local stand-in for the CurseForge packager - it stages a build into
+`deploy\UnitFramesImproved`, stamps the
 `@project-version@`/`@project-date-iso@` TOC tokens from `git describe`, and zips the result into
 `deploy\UnitFramesImproved-<version>.zip` (folder-at-the-root, ready to extract straight into
 `Interface\AddOns` or share for manual testing).
@@ -18,9 +17,24 @@ first run), stages a build into `deploy\UnitFramesImproved`, stamps the
 .\build.ps1 -TargetPath 'E:\...\_classic_\Interface\AddOns\UnitFramesImproved' # exact target only
 ```
 
-Run `Get-Help .\build.ps1 -Full` for every parameter and example. The install root can also be set
+`-DeployToWow` copies into every install flavor it finds under the WoW root: `_retail_`,
+`_classic_`, `_classic_era_`, `_anniversary_`, and `_classic_beta_` (the WoW Forever beta). Run
+`Get-Help .\build.ps1 -Full` for every parameter and example. The install root can also be set
 persistently via the `UFI_WOW_PATH` environment variable instead of passing `-WowInstallPath` every
 time. The VS Code "Build & Deploy Addon" launch task (F5) runs `.\build.ps1 -DeployToWow`.
+
+## Testing
+`tests/` holds offline regression tests that load the addon into a stubbed WoW client (Lua 5.1 via
+Python's `lupa`) once per TOC - Retail, WoW Forever, Mists Classic, TBC Anniversary, Classic Era -
+and check loading, event handling, styling, the options page, and packaging. They never ship: no
+TOC loads them and both `.pkgmeta` and `build.ps1` leave them out.
+
+```sh
+pip install -r tests/requirements.txt
+python -m unittest discover -s tests -v
+```
+
+See [tests/README.md](tests/README.md) for how the stubs work and what still needs an in-game check.
 
 ## Releasing
 [.github/workflows/release.yml](.github/workflows/release.yml) runs the real [CurseForge

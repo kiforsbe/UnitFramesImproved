@@ -1,4 +1,6 @@
--- Stylers for Retail
+-- Stylers for Retail, and for WoW Forever (UnitFramesImproved_Camelot.toc). Forever runs Retail's
+-- Mainline unit frame templates, with only small "Camelot" overrides on top (level/PvP circles,
+-- boss/rare portrait art) that don't touch anything styled here.
 
 local STATUS_TEXT_FONT_SIZE = 12
 
@@ -52,9 +54,11 @@ function UnitFramesImproved:Style_PlayerFrame()
 
   StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Player-PortraitOff-Bar-Health-Status", { styleText = true })
 
-  -- Force show text
-  PlayerFrame.textLockable = true
-  PlayerFrame.forceShow = true
+  -- Whether the numbers show at all is up to Blizzard's statusText/statusTextDisplay CVars (see
+  -- the Status Text option in UnitFramesImproved_Options.lua). Don't write forceShow/textLockable
+  -- to force them: nothing reads those on the unit frame itself (only TextStatusBarMixin does, on
+  -- the bar), and writing them on the bar would taint every later read of them in Blizzard's own
+  -- secret-value-sensitive text update.
 
   -- Force an update as at least on my install, it isn't updating on load. This is
   -- our own addon code calling into Blizzard's UpdateTextString, so it runs
@@ -78,10 +82,6 @@ function UnitFramesImproved:Style_TargetFrame(frame)
   local healthBar = frame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
 
   StyleHealthBarFill(healthBar, "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health-Status", { viaHealthBarTexture = true, styleText = true })
-
-  -- Force show text
-  frame.textLockable = true
-  frame.forceShow = true
 
   -- Force update of the status bar coloring
   UnitFramesImproved:UpdateStatusBarColor(frame)
