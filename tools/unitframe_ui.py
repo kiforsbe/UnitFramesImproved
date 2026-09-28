@@ -59,9 +59,10 @@ FLAVORS = {
 
 # Textures are picked by parentKey, or by name without the frame's name in front ("$parentTexture",
 # "PlayerFrameTexture" and "PlayerStatusTexture" become "texture" and "statustexture").
-FRAME_ART = frozenset({"texture", "frametexture", "bossportraitframetexture", "levelbackgroundcircle"})
+FRAME_ART = frozenset({"texture", "frametexture", "bossportraitframetexture", "levelbackgroundcircle",
+                       "vehicletexture", "vehicleframetexture", "alternatepowerframetexture"})
 PVP_ART = frozenset({"pvpicon", "pvpbackgroundcircle", "pvpbackgroundicon", "highleveltexture"})
-MAIN_ART = ("texture", "statustexture")  # the frame's own texture, as opposed to what's drawn over it
+MAIN_ART = ("texture", "statustexture", "vehicletexture")  # the frame's own texture, as opposed to what's drawn over it
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,8 @@ class Shot:
     host: str | None = None         # the frame whose code creates this one, when the XML doesn't
     force: frozenset[str] = frozenset()   # shown even though nothing in the situation's code shows them
     follow: frozenset[str] = frozenset()  # methods also followed when called as statements
+    answers: tuple[tuple[str, object], ...] = ()   # more of what the game API and globals say
+    fields: tuple[tuple[str, object], ...] = ()    # set on the frame after its OnLoad, as the rest of the UI would
 
 
 STATUS = frozenset({"statustexture"})          # shown while resting or in combat
@@ -91,10 +94,32 @@ def _target(classification: str = "normal", faction: str | None = None, pvp: boo
                 follow=frozenset({"CheckClassification", "CheckLevel", "CheckFaction"}))
 
 
+# The player frame's other looks: swapped in and out by PlayerFrame_ToVehicleArt / _ToPlayerArt.
+PLAYER_ART_SWAPS = frozenset({"PlayerFrame_ToVehicleArt", "PlayerFrame_ToPlayerArt", "PlayerFrame_ShowVehicleTexture",
+                              "PlayerFrame_HideVehicleTexture"})
+
+
+def _vehicle(skin: str) -> Shot:
+    # In a vehicle with its own player frame UI: PlayerFrame_UpdateArt picks the art by the skin
+    # (Classic has two; Mainline one). Classic only swaps while seated.
+    answers = (("UnitHasVehiclePlayerFrameUI", True), ("UnitVehicleSkinType", skin), ("UnitInVehicle", True),
+               ("UnitHasVehicleUI", True))
+    return Shot("PlayerFrame", FRAME_ART, ("PlayerFrame_UpdateArt",), faction="Alliance", follow=PLAYER_ART_SWAPS,
+                answers=answers, fields=(("inSeat", True),))
+
+
 SHOTS = {
     "player": Shot("PlayerFrame", FRAME_ART, faction="Alliance"),
     "player_pvp": Shot("PlayerFrame", FRAME_ART | PVP_ART, ("PlayerFrame_UpdatePvPStatus",), faction="Alliance", pvp=True),
     "status": Shot("PlayerFrame", STATUS, faction="Alliance", force=STATUS),
+    "vehicle": _vehicle("Mechanical"),
+    "vehicle_organic": _vehicle("Natural"),
+    # A class with an alternate power bar (Mainline): any value will do for the bar.
+    "class_resource": Shot("PlayerFrame", FRAME_ART, ("PlayerFrame_ToPlayerArt",), faction="Alliance",
+                           follow=PLAYER_ART_SWAPS, fields=(("activeAlternatePowerBar", True),)),
+    # Plunderstorm's health-only frames (Mainline).
+    "health_only": Shot("PlayerFrame", FRAME_ART, ("PlayerFrame_ToPlayerArt",), faction="Alliance",
+                        follow=PLAYER_ART_SWAPS, answers=(("UNIT_FRAME_SHOW_HEALTH_ONLY", True),)),
     "target": _target(),
     "target_ally": _target(faction="Alliance"),
     "target_pvp": _target(faction="Alliance", pvp=True, high_level=True),
@@ -104,6 +129,7 @@ SHOTS = {
     "rare": _target("rare"),
     "rareelite": _target("rareelite"),
     "worldboss": _target("worldboss"),
+    "minus": _target("minus"),
     "tot": Shot("TargetFrameToT", FRAME_ART, host="TargetFrame"),
     "boss": Shot("Boss1TargetFrame", FRAME_ART, ("Update",), "worldboss", level=-1,
                  follow=frozenset({"CheckClassification"})),
@@ -342,6 +368,10 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size, addon: Addon | Non
         "C_PvP.GetHonorRewardInfo": None,   # no prestige portrait: the plain faction icon
         "UnitExists": True,
         "C_GameRules.IsGameRuleActive": False,   # e.g. TargetFrameDisabled would hide the frame
+        "UnitHasVehiclePlayerFrameUI": False,
+        "UnitVehicleSkinType": None,
+        "UNIT_FRAME_SHOW_HEALTH_ONLY": False,    # Plunderstorm
+        **dict(shot.answers),
     }
     try:
         root = ui.instance(shot.frame)
@@ -355,6 +385,7 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size, addon: Addon | Non
             raise
     context = Context(ui, lua, root, api, shot.follow, addon)
     context.run_script("OnLoad")
+    root.fields.update(shot.fields)
     for name in shot.calls:
         context.call(name)
     if addon is not None:
@@ -1408,6 +1439,8 @@ class Context:
     def global_value(self, name: str, lua: Lua):
         if name == "_G":
             return GLOBALS
+        if name in self.api:   # a global the situation sets, like UNIT_FRAME_SHOW_HEALTH_ONLY
+            return self.api[name]
         if self.addon is not None and name == self.addon.name:
             return self.addon_table
         if name in lua.tables:

@@ -1,10 +1,16 @@
 """Unit frame art in every current version of World of Warcraft, with and without this addon.
 
-One row per frame and situation (the player, PvP flagged or not, and its status glow; the target
-as a mob, as a player of your faction or the other, PvP flagged or not, and its elite / rare / boss
-looks; target of target; boss frames) and two columns per game version: Blizzard's own frames, and
-the same with UnitFramesImproved loaded. Which overlays show (PvP and faction icons, the skull) is
-decided by the code, Blizzard's and the addon's, from what the game API says about the unit. Each cell is what the code draws: which textures and atlases, cropped how, how big, where,
+One row per frame and situation (the player, PvP flagged or not, and its status glow; each other
+look the player frame can switch to: in a vehicle, mechanical or organic, with a class resource
+bar, and health only as in Plunderstorm; the target as a mob, as a player of your faction or the
+other, PvP flagged or not, and its elite / rare / boss / minus mob looks; target of target; boss
+frames) and two columns per game version: Blizzard's own frames, and the same with
+UnitFramesImproved loaded. A version without one of those looks draws its plain frame in that row.
+Which overlays and frame looks show (PvP and faction icons, the skull, vehicle art) is decided by
+the code, Blizzard's and the addon's, from what the game API says about the unit. The focus frame
+isn't a row: it's the target frame's art, and its small size is only a scale.
+
+Each cell is what the code draws: which textures and atlases, cropped how, how big, where,
 and in what order all come from the Blizzard_UnitFrame XML and Lua in the build (see
 unitframe_ui.py), including the pieces some versions add over the frame, like WoW Forever's level
 circle and PvP badge. For the addon's column, the addon's own code from this checkout runs on top,
@@ -83,6 +89,10 @@ ROWS = [  # keys into unitframe_ui.SHOTS
     ("player", "Player"),
     ("player_pvp", "Player:\nPvP flagged"),
     ("status", "Player status glow"),
+    ("vehicle", "Player: vehicle"),
+    ("vehicle_organic", "Player: vehicle,\norganic"),
+    ("class_resource", "Player: class\nresource bar"),
+    ("health_only", "Player: health\nonly (Plunderstorm)"),
     ("target", "Target: mob"),
     ("target_ally", "Target: same-\nfaction player"),
     ("target_pvp", "Target: same-\nfaction player,\nPvP flagged,\nlevel too high"),
@@ -92,6 +102,7 @@ ROWS = [  # keys into unitframe_ui.SHOTS
     ("rare", "Target: rare"),
     ("rareelite", "Target: rare elite"),
     ("worldboss", "Target: boss mob"),
+    ("minus", "Target: minus mob"),
     ("tot", "Target of target"),
     ("boss", "Boss frames"),
 ]
