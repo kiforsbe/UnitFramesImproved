@@ -20,6 +20,9 @@ end
 local STATUS_TEXT_CVAR = "statusText"
 local STATUS_TEXT_DISPLAY_CVAR = "statusTextDisplay"
 
+-- Blizzard's own Status Text setting, on the clients that show one.
+local NATIVE_STATUS_TEXT_SETTING = "PROXY_STATUS_TEXT"
+
 -- statusTextDisplay values, listed in the same order as Blizzard's own dropdown.
 local MODE_NUMERIC = "NUMERIC"
 local MODE_PERCENT = "PERCENT"
@@ -71,17 +74,37 @@ end
 local function SetCVarIfChanged(name, value)
   if (GetCVar(name) ~= value) then
     SetCVar(name, value)
+    return true
+  end
+  return false
+end
+
+-- Blizzard's status bars redraw their text on a statusText CVAR_UPDATE, or when Blizzard's own
+-- Status Text setting reports a change (TextStatusBarMixin:InitializeTextStatusBar registers for
+-- it by name). A statusTextDisplay-only change - e.g. Numeric to Both - fires neither, so without
+-- this the bars keep showing the old mode's labels until their value next changes.
+local function NotifyStatusTextChanged()
+  if (Settings.GetSetting(NATIVE_STATUS_TEXT_SETTING)) then
+    -- Also passes that setting's listeners (its own dropdown included) the setting and value.
+    Settings.NotifyUpdate(NATIVE_STATUS_TEXT_SETTING)
+  elseif (SettingsCallbackRegistry) then
+    -- No such setting registered (WoW Forever shows none), but the bars still listen by name.
+    SettingsCallbackRegistry:TriggerEvent(NATIVE_STATUS_TEXT_SETTING)
   end
 end
 
--- The same pair of writes Blizzard's own dropdown makes. CVAR_UPDATE is a synchronous event, so
--- Blizzard's TextStatusBar handler for statusText runs inside this call - inside our
--- addon-tainted execution. That's harmless unless a unit's health/power is secret at that moment
--- (the handler then compares it, and a tainted comparison of a secret errors), which is why this
--- only ever runs while no addon restriction is active, and why unchanged CVars aren't re-set.
+-- The same pair of writes Blizzard's own dropdown makes, followed by the same redraw it triggers.
+-- CVAR_UPDATE is a synchronous event, so Blizzard's TextStatusBar handler for statusText runs
+-- inside this call - inside our addon-tainted execution - as does the redraw. That's harmless
+-- unless a unit's health/power is secret at that moment (the handler then compares it, and a
+-- tainted comparison of a secret errors), which is why this only ever runs while no addon
+-- restriction is active, and why unchanged CVars aren't re-set.
 local function ApplyStatusText(mode)
-  SetCVarIfChanged(STATUS_TEXT_DISPLAY_CVAR, mode)
-  SetCVarIfChanged(STATUS_TEXT_CVAR, (mode == MODE_NONE) and "0" or "1")
+  local displayChanged = SetCVarIfChanged(STATUS_TEXT_DISPLAY_CVAR, mode)
+  local shownChanged = SetCVarIfChanged(STATUS_TEXT_CVAR, (mode == MODE_NONE) and "0" or "1")
+  if (displayChanged or shownChanged) then
+    NotifyStatusTextChanged()
+  end
 end
 
 local retryFrame = CreateFrame("Frame")

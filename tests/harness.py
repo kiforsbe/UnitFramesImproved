@@ -95,5 +95,10 @@ class AddonClient:
     def status_text_setting(self):
         return self.G.Settings.GetSetting("UNITFRAMESIMPROVED_STATUS_TEXT")
 
+    def player_health_bar(self):
+        if CLIENTS[self.toc_name]["layout"] == "mainline":
+            return self.G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
+        return self.G.PlayerFrameHealthBar
+
     def slash(self, command_line=""):
         self.G.SlashCmdList["UNITFRAMESIMPROVED"](command_line)

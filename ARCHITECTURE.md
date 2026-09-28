@@ -211,9 +211,17 @@ than by addon saved variables. Blizzard's status bars already read those CVars o
 the option works on every client without the addon touching Blizzard's frames - and it stays in
 sync with Blizzard's own dropdown wherever that still exists.
 
+Reading the CVars isn't enough to redraw a bar's labels, though: `TextStatusBarMixin` only redraws
+on a `statusText` `CVAR_UPDATE` or when Blizzard's own Status Text setting (`PROXY_STATUS_TEXT`)
+reports a change, which every bar listens for by name. A `statusTextDisplay`-only change (Numeric to
+Both, say) triggers neither, so after writing the CVars the addon fires that same setting callback -
+through `Settings.NotifyUpdate` where Blizzard's setting is registered, or straight on
+`SettingsCallbackRegistry` where it isn't (WoW Forever).
+
 The addon's `setValue` runs addon-tainted, and `CVAR_UPDATE` is a synchronous event: Blizzard's
 `TextStatusBarMixin` handler for `statusText` runs *inside* our `SetCVar` call, still tainted, and
-compares health/power values - which errors if one of them is secret at that moment. So:
+compares health/power values - which errors if one of them is secret at that moment. The redraw
+callback runs the same way. So:
 
 - A CVar is only written if its value actually changes.
 - While in combat, or while any addon restriction under which values can be secret is active

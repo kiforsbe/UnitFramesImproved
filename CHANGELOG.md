@@ -16,9 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   native Settings API, with a **Status Text** dropdown (Numeric Value / Percentage / Both / None) -
   WoW Forever has no visible setting for showing health/mana numbers on the unit frames. It's backed
   by the same `statusText`/`statusTextDisplay` CVars as Blizzard's own Status Text option, so the two
-  stay in sync on every client. Changes picked in combat or under an addon restriction (encounter,
-  Mythic+, PvP match, restricted map) are held until it ends, since the CVar change runs Blizzard's
-  status bar updates synchronously from addon code, where a secret health/power value would error.
+  stay in sync on every client. It also triggers the same status bar redraw Blizzard's option does,
+  so switching between two shown modes (e.g. Numeric to Both) updates the labels right away. Changes
+  picked in combat or under an addon restriction (encounter, Mythic+, PvP match, restricted map) are
+  held until it ends, since the change runs Blizzard's status bar updates synchronously from addon
+  code, where a secret health/power value would error.
 - `build.ps1` deploys to `_classic_beta_` (the WoW Forever beta install) too.
 - `tests/`: offline regression tests (Python + `lupa`, a real Lua 5.1 runtime) that load the addon
   into a stubbed WoW client once per TOC and check loading, events, styling, the options page, and
