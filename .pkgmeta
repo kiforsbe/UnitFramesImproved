@@ -9,7 +9,10 @@ package-as: UnitFramesImproved
 ignore:
   - build.ps1
   - deploy
+  - docs
   - tests
   - tools
+  - AGENTS.md
   - ARCHITECTURE.md
+  - CLAUDE.md
   - DEVELOPMENT.md

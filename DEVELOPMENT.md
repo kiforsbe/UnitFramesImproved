@@ -44,7 +44,8 @@ details.
 
 - `compare_unitframe_art.py` draws the unit frames of every current WoW version, with and without
   the addon, into one sheet. The addon's code runs as it is in the checkout, so edits show up on the
-  next run, and the sheet is named after the commit.
+  next run, and the sheet is named after the commit. `--publish` also copies it to
+  `docs/unitframe-art-comparison.png`, which the README shows; that's done for every release.
 - `blp.py` converts between BLP and PNG: `export` turns `Textures/` into PNGs in
   `tools/out/textures/addon/`, and `import` turns edited PNGs back into BLPs in `Textures/`.
 - `export_base_textures.py` saves each distinct texture the game's own unit frames use, across all
@@ -57,6 +58,10 @@ packager](https://github.com/BigWigsMods/packager) against `.pkgmeta` - it build
 version/date into the TOC files, uploads it to the [CurseForge
 project](https://www.curseforge.com/wow/addons/unitframesimproved), and attaches the zip to a
 matching GitHub release using `CHANGELOG.md` as the release notes.
+
+Before tagging, refresh the art comparison the README shows. Commit everything else for the
+release, then run `python tools/compare_unitframe_art.py --publish` and check the sheet. Commit
+`docs/unitframe-art-comparison.png`, and tag that commit. [AGENTS.md](AGENTS.md) has the details.
 
 It's manual-only for now: push a tag, then trigger the workflow from the Actions tab (Run
 workflow), picking that tag from the branch/tag dropdown. Requires a `CF_API_KEY` repository secret

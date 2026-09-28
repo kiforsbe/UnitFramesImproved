@@ -75,6 +75,15 @@ class PackagingTests(unittest.TestCase):
         self.assertRegex(pkgmeta, r"(?m)^\s*-\s*tests\s*$")
         self.assertNotRegex(pkgmeta, r"(?m)^externals:")
 
+    def test_repo_only_files_are_not_packaged(self):
+        # docs/ holds the README's art comparison: on GitHub, but not in the addon.
+        build = (REPO_ROOT / "build.ps1").read_text(encoding="utf-8")
+        source_items = set(re.findall(r"'([^']+)'", re.search(r"\$SourceItems = @\((.*?)\)", build, re.S).group(1)))
+        pkgmeta = (REPO_ROOT / ".pkgmeta").read_text(encoding="utf-8")
+        for item in ("docs", "AGENTS.md", "CLAUDE.md"):
+            self.assertNotIn(item, source_items)
+            self.assertRegex(pkgmeta, rf"(?m)^\s*-\s*{re.escape(item)}\s*$")
+
 
 class LoadTests(unittest.TestCase):
     def test_loads_and_handles_events_on_every_client(self):

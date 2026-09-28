@@ -24,6 +24,15 @@ only changes how the frames look. Nothing to set up - it just works.
 One download works for Retail, WoW Forever, Classic (currently Mists of Pandaria Classic), Wrath
 (Titan Reforged), TBC Anniversary, and Classic Era.
 
+## How It Looks
+Blizzard's own unit frames next to UnitFramesImproved's, in every supported version. It covers the
+player frame, including its vehicle and other looks, the target frame for each kind of target,
+target of target, and boss frames. The sheet is drawn by
+[tools/compare_unitframe_art.py](tools/compare_unitframe_art.py) from the game's own UI code and
+the addon's, and is redrawn for every release. It's stamped with the commit it shows.
+
+![Blizzard's unit frames next to UnitFramesImproved's, in each version of WoW](docs/unitframe-art-comparison.png)
+
 ## Installation
 Install via [CurseForge](https://www.curseforge.com/wow/addons/unitframesimproved) or the
 CurseForge app. Manual installation: download a release, and extract the `UnitFramesImproved`

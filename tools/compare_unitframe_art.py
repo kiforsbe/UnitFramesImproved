@@ -23,7 +23,10 @@ one pixel at UI scale 1), and anything the addon did that couldn't be followed.
 
 The sheet is written to tools/out/, named after the addon's commit ("-dirty" if the checkout had
 uncommitted changes), with the time added if a sheet by that name is already there. The commit and
-time are also on the sheet, so runs can be compared.
+time are also on the sheet, so runs can be compared. With --publish, it's also copied to
+docs/unitframe-art-comparison.png, the one README.md shows, which is refreshed for every release
+(see AGENTS.md). --publish only runs on a checkout without uncommitted changes, so the published
+sheet always names the commit it shows.
 
 Game files are read from your World of Warcraft folder (every installed version), and downloaded
 from wago.tools for versions that aren't installed. File paths are looked up in the community
@@ -31,7 +34,7 @@ listfile (github.com/wowdev/wow-listfile). All of it is cached in tools/out/cach
 
 Usage, from the repo root:
     python -m pip install -r tools/requirements.txt
-    python tools/compare_unitframe_art.py [--wow-dir "E:/Blizzard/World of Warcraft"] [--open]
+    python tools/compare_unitframe_art.py [--wow-dir "E:/Blizzard/World of Warcraft"] [--open] [--publish]
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -61,6 +65,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MY_TEXTURES = REPO_ROOT / "Textures"
 OUT_DIR = REPO_ROOT / "tools" / "out"
 CACHE_DIR = OUT_DIR / "cache"
+PUBLISHED = REPO_ROOT / "docs" / "unitframe-art-comparison.png"   # in git, shown in README.md; not packaged
 
 ATLAS_TABLE, ATLAS_MEMBER_TABLE = 897470, 897532  # DBFilesClient/UiTextureAtlas(Member).db2
 
@@ -628,10 +633,16 @@ def main() -> None:
     parser.add_argument("--min-region", type=int, default=12, help="smallest patch of changed pixels to report (default: 12)")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where to write the sheet (default: tools/out)")
     parser.add_argument("--open", action="store_true", help="open the sheet when done")
+    parser.add_argument("--publish", action="store_true",
+                        help=f"also copy the sheet to {PUBLISHED.relative_to(REPO_ROOT).as_posix()} for the README, "
+                             "as each release does (needs a checkout without uncommitted changes)")
     args = parser.parse_args()
 
     now = datetime.now()
     tag, sheet_stamp = stamp(now)
+    if args.publish and (tag == "no-git" or tag.endswith("-dirty")):
+        sys.exit("--publish needs a git checkout without uncommitted changes, so the sheet names the commit it "
+                 "shows: commit first")
     print(sheet_stamp)
     wow_dir = args.wow_dir or wowfiles.find_wow_dir()
     install = wowfiles.LocalInstall(wow_dir) if wow_dir else None
@@ -673,6 +684,10 @@ def main() -> None:
     out = sheet_path(args.out_dir, tag, now)
     compose(columns, args.scale, sheet_stamp).save(out)
     print(f"\nWrote {out}")
+    if args.publish:
+        PUBLISHED.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(out, PUBLISHED)
+        print(f"Copied to {PUBLISHED}")
     if args.open:
         if hasattr(os, "startfile"):
             os.startfile(out)
