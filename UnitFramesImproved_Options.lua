@@ -20,9 +20,6 @@ end
 local STATUS_TEXT_CVAR = "statusText"
 local STATUS_TEXT_DISPLAY_CVAR = "statusTextDisplay"
 
--- Blizzard's own Status Text setting, on the clients that show one.
-local NATIVE_STATUS_TEXT_SETTING = "PROXY_STATUS_TEXT"
-
 -- statusTextDisplay values, listed in the same order as Blizzard's own dropdown.
 local MODE_NUMERIC = "NUMERIC"
 local MODE_PERCENT = "PERCENT"
@@ -79,39 +76,24 @@ local function SetCVarIfChanged(name, value)
   return false
 end
 
--- Blizzard's status bars redraw their text on a statusText CVAR_UPDATE, or when Blizzard's own
--- Status Text setting reports a change (TextStatusBarMixin:InitializeTextStatusBar registers for
--- it by name). A statusTextDisplay-only change - e.g. Numeric to Both - fires neither, so without
--- this the bars keep showing the old mode's labels until their value next changes.
-local function NotifyStatusTextChanged()
-  -- Not on clients with secret values (Retail/Forever): UnitHealth is always secret there, and the
-  -- redraw compares it - from our addon-tainted execution, which errors on every health bar. There
-  -- the bars pick the new mode up on Blizzard's own next (untainted) update of each one.
-  if (issecretvalue) then
-    return
-  end
-
-  if (Settings.GetSetting(NATIVE_STATUS_TEXT_SETTING)) then
-    -- Also passes that setting's listeners (its own dropdown included) the setting and value.
-    Settings.NotifyUpdate(NATIVE_STATUS_TEXT_SETTING)
-  elseif (SettingsCallbackRegistry) then
-    -- No such setting registered, but the bars still listen by name.
-    SettingsCallbackRegistry:TriggerEvent(NATIVE_STATUS_TEXT_SETTING)
-  end
-end
-
--- The same pair of writes Blizzard's own dropdown makes, followed by the same redraw it triggers.
--- CVAR_UPDATE is a synchronous event, so Blizzard's TextStatusBar handler for statusText runs
--- inside this call - inside our addon-tainted execution - as does the redraw, where it runs.
--- That's harmless unless a unit's health/power is secret at that moment (the handler then
--- compares it, and a tainted comparison of a secret errors), which is why this only ever runs
--- while no addon restriction is active, and why unchanged CVars aren't re-set.
+-- The same pair of writes Blizzard's own dropdown makes. Blizzard's status bars only redraw their
+-- text for a statusText change (TextStatusBarMixin's CVAR_UPDATE handler), though - a
+-- statusTextDisplay change alone (e.g. Numeric to Both) would leave the old mode's labels up until
+-- each bar's value next changes. So between two shown modes, statusText is turned off and back on
+-- again, the same as picking None in between; both writes land in the same frame, so nothing
+-- flickers.
+--
+-- That handler's redraw doesn't error on secret health/power (confirmed in game on WoW Forever,
+-- where UnitHealth is always secret), unlike calling UpdateTextString or firing Blizzard's
+-- PROXY_STATUS_TEXT setting callback from here, which do. Unchanged CVars still aren't re-set, and
+-- changes still wait out combat and addon restrictions, to keep those handler runs to a minimum.
 local function ApplyStatusText(mode)
+  local shown = (mode == MODE_NONE) and "0" or "1"
   local displayChanged = SetCVarIfChanged(STATUS_TEXT_DISPLAY_CVAR, mode)
-  local shownChanged = SetCVarIfChanged(STATUS_TEXT_CVAR, (mode == MODE_NONE) and "0" or "1")
-  if (displayChanged or shownChanged) then
-    NotifyStatusTextChanged()
+  if (displayChanged and shown == "1" and GetCVar(STATUS_TEXT_CVAR) == "1") then
+    SetCVar(STATUS_TEXT_CVAR, "0")
   end
+  SetCVarIfChanged(STATUS_TEXT_CVAR, shown)
 end
 
 local retryFrame = CreateFrame("Frame")

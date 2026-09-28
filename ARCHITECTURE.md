@@ -211,21 +211,22 @@ than by addon saved variables. Blizzard's status bars already read those CVars o
 the option works on every client without the addon touching Blizzard's frames - and it stays in
 sync with Blizzard's own dropdown wherever that still exists.
 
-Reading the CVars isn't enough to redraw a bar's labels, though: `TextStatusBarMixin` only redraws
-on a `statusText` `CVAR_UPDATE` or when Blizzard's own Status Text setting (`PROXY_STATUS_TEXT`)
-reports a change, which every bar listens for by name. A `statusTextDisplay`-only change (Numeric to
-Both, say) triggers neither, so after writing the CVars the addon fires that same setting callback -
-through `Settings.NotifyUpdate` where Blizzard's setting is registered, or straight on
-`SettingsCallbackRegistry` where it isn't. Only on clients without secret values (the Classic
-family), though: on Retail and WoW Forever `UnitHealth` is *always* secret (`SecretReturns = true`
-in the client's API docs, not tied to any restriction), the redraw compares it, and triggered from
-addon code it runs tainted - so it errors on every health bar. There the bars pick the new mode up
-on Blizzard's own next update of each one.
+Writing the CVars isn't enough to redraw a bar's labels, though: `TextStatusBarMixin` only redraws
+on a `statusText` `CVAR_UPDATE`, or when Blizzard's own Status Text setting (`PROXY_STATUS_TEXT`)
+reports a change. A `statusTextDisplay`-only change (Numeric to Both, say) triggers neither, so
+between two shown modes the addon turns `statusText` off and straight back on - the same as picking
+None in between, and within one frame, so nothing flickers.
 
-The addon's `setValue` runs addon-tainted, and `CVAR_UPDATE` is a synchronous event: Blizzard's
-`TextStatusBarMixin` handler for `statusText` runs *inside* our `SetCVar` call, still tainted, and
-compares health/power values - which errors if one of them is secret at that moment. The redraw
-callback runs the same way. So:
+It can't redraw the bars itself, or fire that setting callback: on Retail and WoW Forever
+`UnitHealth` is *always* secret (`SecretReturns = true` in the client's API docs, not tied to any
+restriction), the redraw compares it, and started from addon code it runs tainted - so it errors on
+every health bar (seen in game on Forever with `Settings.NotifyUpdate("PROXY_STATUS_TEXT")`).
+Blizzard's `statusText` `CVAR_UPDATE` handler, run by our own `SetCVar`, redraws without erroring
+even then (also seen in game on Forever).
+
+The addon's `setValue` runs addon-tainted, and `CVAR_UPDATE` is a synchronous event, so Blizzard's
+`TextStatusBarMixin` handler for `statusText` runs inside our `SetCVar` call. It doesn't error on
+secret values out of combat (above), but to keep those handler runs to a minimum anyway:
 
 - A CVar is only written if its value actually changes.
 - While in combat, or while any addon restriction under which values can be secret is active

@@ -541,50 +541,6 @@ function Settings.GetSetting(variable)
   return WoWTest.settings.byVariable[variable]
 end
 
--- Value-changed callbacks, keyed by a setting's variable name - whether or not a setting by that
--- name is registered (CallbackRegistryMixin with undefined events allowed).
-local settingCallbacks = {}
-
-SettingsCallbackRegistry = {}
-
-function SettingsCallbackRegistry:TriggerEvent(event, ...)
-  Log("TriggerEvent", event, ...)
-  for owner, callback in ipairs(settingCallbacks[event] or {}) do
-    callback(owner, ...)
-  end
-end
-
-function Settings.SetOnValueChangedCallback(variable, callback)
-  settingCallbacks[variable] = settingCallbacks[variable] or {}
-  table.insert(settingCallbacks[variable], callback)
-end
-
-function Settings.NotifyUpdate(variable)
-  local setting = Settings.GetSetting(variable)
-  if (setting) then
-    SettingsCallbackRegistry:TriggerEvent(variable, setting, setting:GetValue())
-  end
-end
-
--- Blizzard's own Status Text dropdown (Blizzard_SettingsDefinitions_Frame/Interface.lua), on the
--- clients that have one; tests register it where they need it.
-function WoWTest.RegisterNativeStatusTextSetting()
-  local modes = { "NUMERIC", "PERCENT", "BOTH", "NONE" }
-  local function GetValue()
-    for index, mode in ipairs(modes) do
-      if (GetCVar("statusTextDisplay") == mode) then
-        return index
-      end
-    end
-  end
-  local function SetValue(index)
-    SetCVar("statusTextDisplay", modes[index])
-    SetCVar("statusText", (modes[index] == "NONE") and "0" or "1")
-  end
-  local category = Settings.RegisterVerticalLayoutCategory("Interface")
-  return Settings.RegisterProxySetting(category, "PROXY_STATUS_TEXT", Settings.VarType.Number, "Status Text", 4, GetValue, SetValue)
-end
-
 ---------------------------------------------------------------------------------------------------
 -- Misc globals, strings and unit API
 ---------------------------------------------------------------------------------------------------
@@ -656,17 +612,13 @@ local function TextStrings(bar)
   bar.LeftText:SetPoint("LEFT", bar, "LEFT", 2, 0)
   bar.RightText:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
 
-  -- The only two things that redraw a bar's text other than its own value changing
-  -- (TextStatusBarMixin:InitializeTextStatusBar/TextStatusBarOnEvent): a statusText CVAR_UPDATE,
-  -- and Blizzard's own Status Text setting reporting a change.
+  -- TextStatusBarMixin:TextStatusBarOnEvent: a statusText change redraws the bar's text, a
+  -- statusTextDisplay change on its own doesn't.
   bar:RegisterEvent("CVAR_UPDATE")
-  bar:SetScript("OnEvent", function(self, event, cvar)
+  bar:SetScript("OnEvent", function(self, _, cvar)
     if (cvar == "statusText") then
       self:UpdateTextString()
     end
-  end)
-  Settings.SetOnValueChangedCallback("PROXY_STATUS_TEXT", function()
-    bar:UpdateTextString()
   end)
 end
 

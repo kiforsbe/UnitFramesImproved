@@ -225,17 +225,25 @@ class StatusTextOptionTests(unittest.TestCase):
     def test_unchanged_cvars_are_not_rewritten(self):
         # Every SetCVar fires CVAR_UPDATE synchronously into Blizzard's status bar handlers.
         client = AddonClient("UnitFramesImproved_Camelot.toc")
+        client.WoWTest.SetCVarSilently("statusText", "0")
+        client.WoWTest.SetCVarSilently("statusTextDisplay", "BOTH")
+        setting = client.status_text_setting()
+        setting.SetValue(setting, "BOTH")
+        self.assertEqual([call[1] for call in client.calls_named("SetCVar")], ["statusText"])
+
+    def test_switching_between_shown_modes_turns_status_text_off_and_on(self):
+        # Blizzard's bars only redraw their text for a statusText change - the same as picking None
+        # in between, which also doesn't error on secret health the way a direct redraw would.
+        client = AddonClient("UnitFramesImproved_Camelot.toc")
         client.WoWTest.SetCVarSilently("statusText", "1")
         client.WoWTest.SetCVarSilently("statusTextDisplay", "NUMERIC")
         setting = client.status_text_setting()
         setting.SetValue(setting, "BOTH")
-        self.assertEqual([call[1] for call in client.calls_named("SetCVar")], ["statusTextDisplay"])
+        writes = [(call[1], call[2]) for call in client.calls_named("SetCVar")]
+        self.assertEqual(writes, [("statusTextDisplay", "BOTH"), ("statusText", "0"), ("statusText", "1")])
 
     def test_every_mode_change_redraws_blizzards_status_bars(self):
-        # Blizzard's bars redraw their text on a statusText CVAR_UPDATE or on Blizzard's own Status
-        # Text setting's change callback. Switching between two shown modes (Numeric -> Both) only
-        # writes statusTextDisplay, so it has to fire that callback, as Blizzard's dropdown does.
-        for toc in CLASSIC_TOCS:
+        for toc in CLIENTS:
             with self.subTest(toc=toc):
                 client = AddonClient(toc)
                 setting = client.status_text_setting()
@@ -245,33 +253,6 @@ class StatusTextOptionTests(unittest.TestCase):
                     setting.SetValue(setting, mode)
                     self.assertGreater(client.WoWTest.CallCount(bar, "UpdateTextString"), redraws, mode)
                     redraws = client.WoWTest.CallCount(bar, "UpdateTextString")
-
-    def test_mode_change_notifies_blizzards_own_setting_where_it_exists(self):
-        # Through Settings.NotifyUpdate, so its listeners get the setting and value they expect.
-        client = AddonClient("UnitFramesImproved_Mists.toc")
-        client.WoWTest.RegisterNativeStatusTextSetting()
-        client.WoWTest.SetCVarSilently("statusText", "1")
-        client.WoWTest.SetCVarSilently("statusTextDisplay", "NUMERIC")
-        setting = client.status_text_setting()
-        setting.SetValue(setting, "BOTH")
-        notified = [call for call in client.calls_named("TriggerEvent") if call[1] == "PROXY_STATUS_TEXT"]
-        # (setting, value) - Blizzard's own setting, and its index for Both.
-        self.assertEqual([(call[2].variable, call[3]) for call in notified], [("PROXY_STATUS_TEXT", 3)])
-
-    def test_no_redraw_from_addon_code_where_values_can_be_secret(self):
-        # On Retail/Forever UnitHealth is always secret, and Blizzard's redraw compares it - which
-        # errors when our (addon-tainted) code is what triggered it. Leave it to Blizzard's own
-        # next update of each bar there.
-        for toc in MAINLINE_TOCS:
-            with self.subTest(toc=toc):
-                client = AddonClient(toc)
-                client.WoWTest.RegisterNativeStatusTextSetting()
-                client.WoWTest.SetCVarSilently("statusText", "1")
-                client.WoWTest.SetCVarSilently("statusTextDisplay", "NUMERIC")
-                setting = client.status_text_setting()
-                setting.SetValue(setting, "BOTH")
-                self.assertEqual(client.cvar("statusTextDisplay"), "BOTH")
-                self.assertEqual(client.calls_named("TriggerEvent"), [])
 
     def test_change_in_combat_waits_for_combat_to_end(self):
         client = AddonClient("UnitFramesImproved_Camelot.toc")
