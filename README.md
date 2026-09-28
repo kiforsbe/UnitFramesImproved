@@ -21,8 +21,8 @@ only changes how the frames look. Nothing to set up - it just works.
   even after Blizzard UI updates.
 
 ## Platform Support
-One download works for Retail, WoW Forever, Classic (currently Mists of Pandaria Classic), TBC
-Anniversary, and Classic Era.
+One download works for Retail, WoW Forever, Classic (currently Mists of Pandaria Classic), Wrath
+(Titan Reforged), TBC Anniversary, and Classic Era.
 
 ## Installation
 Install via [CurseForge](https://www.curseforge.com/wow/addons/unitframesimproved) or the

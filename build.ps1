@@ -165,6 +165,7 @@ $SourceItems = @(
     'UnitFramesImproved_Classic.lua',
     'UnitFramesImproved_Options.lua',
     'UnitFramesImproved_Mists.toc',
+    'UnitFramesImproved_Wrath.toc',
     'UnitFramesImproved_Vanilla.toc',
     'UnitFramesImproved_TBC.toc',
     'UnitFramesImproved_Camelot.toc',

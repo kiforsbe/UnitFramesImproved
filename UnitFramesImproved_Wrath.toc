@@ -1,0 +1,19 @@
+## Interface: 38002
+
+## Title: UnitFramesImproved
+## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
+## IconTexture: Interface\Icons\Spell_Nature_HealingTouch
+## Version: @project-version@
+## Author: kiforsbe / KawF
+
+## Category: Unit Frames
+
+## X-License: Public Domain
+## X-Category: Unit Frames
+## X-Curse-Project-ID: 27038
+## X-Date: @project-date-iso@
+
+HelperFunctions.lua
+UnitFramesImproved.lua
+UnitFramesImproved_Classic.lua
+UnitFramesImproved_Options.lua

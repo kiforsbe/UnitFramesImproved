@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Wrath support: `UnitFramesImproved_Wrath.toc` (`## Interface: 38002`, the Titan Reforged
+  3.80.2 client). `_Wrath.toc` is the suffix Blizzard's own Wrath TOCs use. Without it, a Wrath
+  client fell back to `UnitFramesImproved.toc` and its Retail styler. Wrath runs the Classic
+  family's unit frames, so it loads the Classic styler like Vanilla, TBC and Mists.
+
 ## [4.1.0-universal] - 2026-09-28
 
 ### Added

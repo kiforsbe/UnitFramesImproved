@@ -22,6 +22,7 @@ CLIENTS = {
     "UnitFramesImproved.toc": {"client": "Retail", "layout": "mainline", "has_focus": True, "interface_range": (110000, 999999)},
     "UnitFramesImproved_Camelot.toc": {"client": "WoW Forever", "layout": "mainline", "has_focus": True, "interface_range": (16000, 16999)},
     "UnitFramesImproved_Mists.toc": {"client": "Mists of Pandaria Classic", "layout": "classic", "has_focus": True, "interface_range": (50000, 50999)},
+    "UnitFramesImproved_Wrath.toc": {"client": "Wrath (Titan Reforged)", "layout": "classic", "has_focus": True, "interface_range": (30000, 39999)},
     "UnitFramesImproved_TBC.toc": {"client": "TBC Anniversary", "layout": "classic", "has_focus": True, "interface_range": (20000, 20999)},
     "UnitFramesImproved_Vanilla.toc": {"client": "Classic Era", "layout": "classic", "has_focus": False, "interface_range": (11000, 11999)},
 }

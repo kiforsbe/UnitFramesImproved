@@ -17,7 +17,7 @@ Blizzard's own updates.
 
 | File | Role |
 |---|---|
-| `UnitFramesImproved.toc` / `_Camelot.toc` / `_Mists.toc` / `_TBC.toc` / `_Vanilla.toc` | Per-client TOC files - see [Client split](#client-split) |
+| `UnitFramesImproved.toc` / `_Camelot.toc` / `_Mists.toc` / `_Wrath.toc` / `_TBC.toc` / `_Vanilla.toc` | Per-client TOC files - see [Client split](#client-split) |
 | `UnitFramesImproved.lua` | Shared logic: addon table, event frame + slash commands, event handlers, `UpdateStatusBarColor`, `UnitColor`, `OffsetAnchor`, other small helpers used by both client stylers |
 | `UnitFramesImproved_Retail.lua` | `Style_PlayerFrame`/`Style_TargetFrame`/`Style_ToTFrame` for the Mainline nested `PlayerFrameContent`-style templates (Retail and WoW Forever) |
 | `UnitFramesImproved_Classic.lua` | Same three functions for the Classic family (Classic Era/Vanilla and Classic progression), which still use the pre-Dragonflight flat, global-named frame templates |
@@ -35,7 +35,7 @@ flowchart LR
         direction LR
         H1[HelperFunctions.lua] --> S1[UnitFramesImproved.lua] --> F1[UnitFramesImproved_Retail.lua] --> O1[UnitFramesImproved_Options.lua]
     end
-    subgraph C["_Mists.toc / _TBC.toc / _Vanilla.toc (Classic family)"]
+    subgraph C["_Mists.toc / _Wrath.toc / _TBC.toc / _Vanilla.toc (Classic family)"]
         direction LR
         H2[HelperFunctions.lua] --> S2[UnitFramesImproved.lua] --> F2[UnitFramesImproved_Classic.lua] --> O2[UnitFramesImproved_Options.lua]
     end
@@ -64,6 +64,7 @@ its own suffix and falls back to the unsuffixed `UnitFramesImproved.toc`:
 | Retail | `UnitFramesImproved.toc` | 12xxxx | `_Retail.lua` |
 | WoW Forever | `UnitFramesImproved_Camelot.toc` | 16xxx | `_Retail.lua` |
 | Mists of Pandaria Classic | `UnitFramesImproved_Mists.toc` | 50xxx | `_Classic.lua` |
+| Wrath (Titan Reforged) | `UnitFramesImproved_Wrath.toc` | 3xxxx | `_Classic.lua` |
 | TBC Anniversary | `UnitFramesImproved_TBC.toc` | 20xxx | `_Classic.lua` |
 | Classic Era | `UnitFramesImproved_Vanilla.toc` | 11xxx | `_Classic.lua` |
 
