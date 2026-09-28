@@ -84,21 +84,28 @@ end
 -- it by name). A statusTextDisplay-only change - e.g. Numeric to Both - fires neither, so without
 -- this the bars keep showing the old mode's labels until their value next changes.
 local function NotifyStatusTextChanged()
+  -- Not on clients with secret values (Retail/Forever): UnitHealth is always secret there, and the
+  -- redraw compares it - from our addon-tainted execution, which errors on every health bar. There
+  -- the bars pick the new mode up on Blizzard's own next (untainted) update of each one.
+  if (issecretvalue) then
+    return
+  end
+
   if (Settings.GetSetting(NATIVE_STATUS_TEXT_SETTING)) then
     -- Also passes that setting's listeners (its own dropdown included) the setting and value.
     Settings.NotifyUpdate(NATIVE_STATUS_TEXT_SETTING)
   elseif (SettingsCallbackRegistry) then
-    -- No such setting registered (WoW Forever shows none), but the bars still listen by name.
+    -- No such setting registered, but the bars still listen by name.
     SettingsCallbackRegistry:TriggerEvent(NATIVE_STATUS_TEXT_SETTING)
   end
 end
 
 -- The same pair of writes Blizzard's own dropdown makes, followed by the same redraw it triggers.
 -- CVAR_UPDATE is a synchronous event, so Blizzard's TextStatusBar handler for statusText runs
--- inside this call - inside our addon-tainted execution - as does the redraw. That's harmless
--- unless a unit's health/power is secret at that moment (the handler then compares it, and a
--- tainted comparison of a secret errors), which is why this only ever runs while no addon
--- restriction is active, and why unchanged CVars aren't re-set.
+-- inside this call - inside our addon-tainted execution - as does the redraw, where it runs.
+-- That's harmless unless a unit's health/power is secret at that moment (the handler then
+-- compares it, and a tainted comparison of a secret errors), which is why this only ever runs
+-- while no addon restriction is active, and why unchanged CVars aren't re-set.
 local function ApplyStatusText(mode)
   local displayChanged = SetCVarIfChanged(STATUS_TEXT_DISPLAY_CVAR, mode)
   local shownChanged = SetCVarIfChanged(STATUS_TEXT_CVAR, (mode == MODE_NONE) and "0" or "1")

@@ -235,7 +235,7 @@ class StatusTextOptionTests(unittest.TestCase):
         # Blizzard's bars redraw their text on a statusText CVAR_UPDATE or on Blizzard's own Status
         # Text setting's change callback. Switching between two shown modes (Numeric -> Both) only
         # writes statusTextDisplay, so it has to fire that callback, as Blizzard's dropdown does.
-        for toc in CLIENTS:
+        for toc in CLASSIC_TOCS:
             with self.subTest(toc=toc):
                 client = AddonClient(toc)
                 setting = client.status_text_setting()
@@ -248,7 +248,7 @@ class StatusTextOptionTests(unittest.TestCase):
 
     def test_mode_change_notifies_blizzards_own_setting_where_it_exists(self):
         # Through Settings.NotifyUpdate, so its listeners get the setting and value they expect.
-        client = AddonClient("UnitFramesImproved.toc")
+        client = AddonClient("UnitFramesImproved_Mists.toc")
         client.WoWTest.RegisterNativeStatusTextSetting()
         client.WoWTest.SetCVarSilently("statusText", "1")
         client.WoWTest.SetCVarSilently("statusTextDisplay", "NUMERIC")
@@ -257,6 +257,21 @@ class StatusTextOptionTests(unittest.TestCase):
         notified = [call for call in client.calls_named("TriggerEvent") if call[1] == "PROXY_STATUS_TEXT"]
         # (setting, value) - Blizzard's own setting, and its index for Both.
         self.assertEqual([(call[2].variable, call[3]) for call in notified], [("PROXY_STATUS_TEXT", 3)])
+
+    def test_no_redraw_from_addon_code_where_values_can_be_secret(self):
+        # On Retail/Forever UnitHealth is always secret, and Blizzard's redraw compares it - which
+        # errors when our (addon-tainted) code is what triggered it. Leave it to Blizzard's own
+        # next update of each bar there.
+        for toc in MAINLINE_TOCS:
+            with self.subTest(toc=toc):
+                client = AddonClient(toc)
+                client.WoWTest.RegisterNativeStatusTextSetting()
+                client.WoWTest.SetCVarSilently("statusText", "1")
+                client.WoWTest.SetCVarSilently("statusTextDisplay", "NUMERIC")
+                setting = client.status_text_setting()
+                setting.SetValue(setting, "BOTH")
+                self.assertEqual(client.cvar("statusTextDisplay"), "BOTH")
+                self.assertEqual(client.calls_named("TriggerEvent"), [])
 
     def test_change_in_combat_waits_for_combat_to_end(self):
         client = AddonClient("UnitFramesImproved_Camelot.toc")

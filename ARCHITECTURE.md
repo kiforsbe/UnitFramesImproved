@@ -216,7 +216,11 @@ on a `statusText` `CVAR_UPDATE` or when Blizzard's own Status Text setting (`PRO
 reports a change, which every bar listens for by name. A `statusTextDisplay`-only change (Numeric to
 Both, say) triggers neither, so after writing the CVars the addon fires that same setting callback -
 through `Settings.NotifyUpdate` where Blizzard's setting is registered, or straight on
-`SettingsCallbackRegistry` where it isn't (WoW Forever).
+`SettingsCallbackRegistry` where it isn't. Only on clients without secret values (the Classic
+family), though: on Retail and WoW Forever `UnitHealth` is *always* secret (`SecretReturns = true`
+in the client's API docs, not tied to any restriction), the redraw compares it, and triggered from
+addon code it runs tainted - so it errors on every health bar. There the bars pick the new mode up
+on Blizzard's own next update of each one.
 
 The addon's `setValue` runs addon-tainted, and `CVAR_UPDATE` is a synchronous event: Blizzard's
 `TextStatusBarMixin` handler for `statusText` runs *inside* our `SetCVar` call, still tainted, and
