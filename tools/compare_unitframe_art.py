@@ -1,18 +1,21 @@
 """Unit frame art in every current version of World of Warcraft, next to this addon's.
 
-One row per frame (player, target and its elite / rare / boss looks, target of target, boss
-frames, the player's status glow) and one column per game version, with the addon's own textures
-from Textures/ in the last column. Each piece of art is drawn the way that version draws it: the
-Classic versions crop a texture with the coordinates in their frame XML (mirrored for the player);
-Retail and WoW Forever draw atlases, putting the elite / rare / boss dragon over the portrait at
-the offsets their Lua uses. A cell that's identical to one further left says so.
+One row per frame and situation (the player, PvP flagged or not, and its status glow; the target,
+PvP flagged and too high level, and its elite / rare / boss looks; target of target; boss frames)
+and one column per game version. Each cell is what that version's own UI code draws: which
+textures and atlases, cropped how, how big, where, and in what order all come from the
+Blizzard_UnitFrame XML and Lua in the build (see unitframe_ui.py). That includes the pieces some
+versions add over the frame, like WoW Forever's level circle and PvP badge. The addon's textures
+from Textures/ get their own column, after the last Classic version, each drawn where the Classic
+frame draws the texture it replaces. A cell that's identical to one further left says so.
 
 It also prints, for each texture the addon replaces, the Blizzard version it's closest to and
-where it differs, in on-screen coordinates (0,0 = the art's top-left corner, one unit = one pixel
-at UI scale 1).
+where it differs, in on-screen coordinates (0,0 = the texture's top-left corner as drawn, one
+unit = one pixel at UI scale 1).
 
 Game files are read from your World of Warcraft folder (every installed version), and downloaded
-from wago.tools for versions that aren't installed. Both are cached in tools/out/cache/.
+from wago.tools for versions that aren't installed. File paths are looked up in the community
+listfile (github.com/wowdev/wow-listfile). All of it is cached in tools/out/cache/.
 
 Usage, from the repo root:
     python -m pip install -r tools/requirements.txt
@@ -27,7 +30,7 @@ import io
 import os
 import struct
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 try:
@@ -35,7 +38,9 @@ try:
 except ImportError:
     sys.exit("Pillow is missing: python -m pip install -r tools/requirements.txt")
 
+import unitframe_ui
 import wowfiles
+from unitframe_ui import MAIN_ART, FrameArt, Loaded, Piece
 from wowfiles import MissingFile
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -45,41 +50,33 @@ CACHE_DIR = OUT_DIR / "cache"
 
 ATLAS_TABLE, ATLAS_MEMBER_TABLE = 897470, 897532  # DBFilesClient/UiTextureAtlas(Member).db2
 
-# (left, right, top, bottom) texture coordinates and on-screen size, from the Classic versions'
-# Blizzard_UnitFrame/Classic/PlayerFrame.xml and TargetFrame.xml (the same in all of them).
-# left > right means the game draws it mirrored.
-PLAYER_CROP = ((0.85546875, 0.1015625, 0.0625, 0.6640625), (193, 77))
-TARGET_CROP = ((0.1015625, 1.0, 0.0078125, 0.78125), (230, 99))
-TOT_CROP = ((0.015625, 0.7265625, 0.0, 0.703125), (93, 45))
-STATUS_CROP = ((0.0, 0.74609375, 0.0, 0.53125), (190, 66))
-
-TARGET_FRAME_SIZE = (232, 100)  # Retail's TargetFrameContainer, which the atlases are placed in
-
 
 @dataclass(frozen=True)
 class Variant:
     title: str
     product: str             # Blizzard's product code
-    style: str               # key into ART
+    flavor: str              # key into unitframe_ui.FLAVORS
     build_name_has: str = ""
     atlas_suffix: str = ""   # tried first when looking up an atlas
     on_wago: bool = True
 
 
 VARIANTS = [
-    Variant("Vanilla", "wow_classic_era", "classic"),
-    Variant("TBC", "wow_anniversary", "classic"),
-    Variant("Wrath", "wow_classic_titan", "classic"),  # Titan Reforged, China only
-    Variant("Mists", "wow_classic", "classic"),
-    Variant("Retail", "wow", "retail"),
+    Variant("Vanilla", "wow_classic_era", "vanilla"),
+    Variant("TBC", "wow_anniversary", "tbc"),
+    Variant("Wrath", "wow_classic_titan", "wrath"),  # Titan Reforged, China only
+    Variant("Mists", "wow_classic", "mists"),
     # WoW Forever runs as the Classic beta product, and draws the "-c60" copies of Retail's atlases.
     Variant("Forever", "wow_classic_beta", "forever", build_name_has="Forever", atlas_suffix="-c60", on_wago=False),
+    Variant("Retail", "wow", "retail"),
 ]
 
-ROWS = [
+ROWS = [  # keys into unitframe_ui.SHOTS
     ("player", "Player"),
+    ("player_pvp", "Player:\nPvP flagged"),
     ("status", "Player status glow"),
     ("target", "Target"),
+    ("target_pvp", "Target:\nPvP flagged,\nlevel too high"),
     ("elite", "Target: elite"),
     ("rare", "Target: rare"),
     ("rareelite", "Target: rare elite"),
@@ -88,74 +85,24 @@ ROWS = [
     ("boss", "Boss frames"),
 ]
 
-
-@dataclass(frozen=True)
-class Texture:
-    fdid: int
-    name: str
-    crop: tuple
-
-
-@dataclass(frozen=True)
-class Layer:
-    atlas: str
-    topright: tuple[int, int] | None = None  # offset from the target frame's TOPRIGHT; None = centred
-
-
-HUD = "UI-HUD-UnitFrame-"
-TARGET = Layer(HUD + "Target-PortraitOn")
-RARE_TARGET = Layer(HUD + "Target-Rare-PortraitOn")
-
-ART = {
-    # Blizzard_UnitFrame/Classic/TargetFrame.lua: TARGET_FRAME_TEXTURES and CheckClassification.
-    "classic": {
-        "player": Texture(137026, "UI-TargetingFrame", PLAYER_CROP),
-        "status": Texture(130935, "UI-Player-Status", STATUS_CROP),
-        "target": Texture(137026, "UI-TargetingFrame", TARGET_CROP),
-        "elite": Texture(137015, "UI-TargetingFrame-Elite", TARGET_CROP),
-        "rare": Texture(137021, "UI-TargetingFrame-Rare", TARGET_CROP),
-        "rareelite": Texture(137020, "UI-TargetingFrame-Rare-Elite", TARGET_CROP),
-        "worldboss": Texture(137015, "UI-TargetingFrame-Elite", TARGET_CROP),
-        "tot": Texture(137027, "UI-TargetofTargetFrame", TOT_CROP),
-        "boss": Texture(337503, "UI-UnitFrame-Boss", TARGET_CROP),
-    },
-    # Blizzard_UnitFrame/Mainline/TargetFrame.lua: CheckClassification and the boss frame setup.
-    "retail": {
-        "player": [Layer(HUD + "Player-PortraitOn")],
-        "status": [Layer(HUD + "Player-PortraitOn-Status")],
-        "target": [TARGET],
-        "elite": [TARGET, Layer(HUD + "Target-PortraitOn-Boss-Gold", (-11, -8))],
-        "rare": [RARE_TARGET],
-        "rareelite": [RARE_TARGET, Layer(HUD + "Target-PortraitOn-Boss-Rare-Silver", (-11, -8))],
-        "worldboss": [TARGET, Layer(HUD + "Target-PortraitOn-Boss-Gold-Winged", (8, -8))],
-        "tot": [Layer(HUD + "TargetofTarget-PortraitOn")],
-        "boss": [Layer(HUD + "Target-Boss-Small-PortraitOff")],
-    },
-}
-# Forever: Blizzard_UnitFrame/Camelot/TargetFrameUtils.lua, GetBossPortraitFrameData.
-ART["forever"] = {
-    **ART["retail"],
-    "elite": [TARGET, Layer(HUD + "Target-PortraitOn-Boss-Gold", (0, 1))],
-    "rare": [RARE_TARGET, Layer(HUD + "Target-PortraitOn-Boss-Rare-Silver-Winged", (8, -7))],
-    "rareelite": [RARE_TARGET, Layer(HUD + "Target-PortraitOn-Boss-Rare-Silver-Winged", (8, -7))],
-    "worldboss": [TARGET, Layer(HUD + "Target-PortraitOn-Boss-Gold-Winged", (11, -4))],
-}
-
-# The addon's textures, drawn with the Classic crops it uses them with (UnitFramesImproved_Classic.lua).
+# The addon's textures (UnitFramesImproved_Classic.lua), each drawn in place of the Classic frame's
+# own. What's drawn over it (the PvP flag, the skull) stays Blizzard's.
 MINE = {
-    "player": ("UI-TargetingFrame.blp", PLAYER_CROP, ""),
-    "status": ("UI-Player-Status.blp", STATUS_CROP, ""),
-    "target": ("UI-TargetingFrame.blp", TARGET_CROP, ""),
-    "elite": ("UI-TargetingFrame-Elite.blp", TARGET_CROP, ""),
-    "rare": ("UI-TargetingFrame-Rare.blp", TARGET_CROP, ""),
-    "rareelite": ("UI-TargetingFrame-Rare-Elite.blp", TARGET_CROP, ""),
-    "worldboss": ("UI-TargetingFrame-Elite.blp", TARGET_CROP, ""),
-    "boss": ("UI-UnitFrame-Boss.blp", TARGET_CROP, "shipped, not used by the code"),
+    "player": ("UI-TargetingFrame.blp", ""),
+    "player_pvp": ("UI-TargetingFrame.blp", ""),
+    "status": ("UI-Player-Status.blp", ""),
+    "target": ("UI-TargetingFrame.blp", ""),
+    "target_pvp": ("UI-TargetingFrame.blp", ""),
+    "elite": ("UI-TargetingFrame-Elite.blp", ""),
+    "rare": ("UI-TargetingFrame-Rare.blp", ""),
+    "rareelite": ("UI-TargetingFrame-Rare-Elite.blp", ""),
+    "worldboss": ("UI-TargetingFrame-Elite.blp", ""),
+    "boss": ("UI-UnitFrame-Boss.blp", "shipped, not used by the code"),
 }
 MINE_TITLE = "UnitFramesImproved"
+MINE_AFTER = "Mists"  # the addon's art is Classic art: after the last Classic version, before Forever and Retail
 
-# Classic draws the status glow with alphaMode="ADD" (PlayerFrame.xml): black is see-through.
-ADDITIVE_ROWS = {"status"}
+HUD = "UI-HUD-UnitFrame-"
 
 
 # --- Reading the game's art -----------------------------------------------------------------------
@@ -250,6 +197,12 @@ class Atlases:
     def fdid(self, name: str) -> int:
         return self.textures[self.member(name)["UiTextureAtlasID"]]["FileDataID"]
 
+    def size(self, name: str) -> tuple[int, int]:
+        """The size the game draws it at when told to use the atlas's size."""
+        member = self.member(name)
+        return (member["OverrideWidth"] or self._width(member),
+                member["OverrideHeight"] or member["CommittedBottom"] - member["CommittedTop"])
+
     def image(self, name: str) -> Image.Image:
         member = self.member(name)
         atlas = self.textures[member["UiTextureAtlasID"]]
@@ -257,9 +210,49 @@ class Atlases:
         sx, sy = texture.width / atlas["AtlasWidth"], texture.height / atlas["AtlasHeight"]
         piece = texture.crop((round(member["CommittedLeft"] * sx), round(member["CommittedTop"] * sy),
                               round(member["CommittedRight"] * sx), round(member["CommittedBottom"] * sy)))
-        size = (member["OverrideWidth"] or self._width(member),
-                member["OverrideHeight"] or member["CommittedBottom"] - member["CommittedTop"])
+        size = self.size(name)
         return piece if piece.size == size else piece.resize(size, Image.Resampling.LANCZOS)
+
+
+class Art:
+    """A build's textures and atlases, for the pieces its frames draw."""
+
+    def __init__(self, source: Source, atlas_suffix: str):
+        self.source, self.atlas_suffix = source, atlas_suffix
+        self._atlases = None
+
+    @property
+    def atlases(self) -> Atlases:
+        if self._atlases is None:  # only read when a frame uses one
+            self._atlases = Atlases(self.source, self.atlas_suffix)
+        return self._atlases
+
+    def atlas_size(self, name: str) -> tuple[int, int]:
+        return self.atlases.size(name)
+
+    def prefetch(self, pieces) -> None:
+        """Reads all the textures in one pass over the build's file list."""
+        fdids = set()
+        for piece in pieces:
+            try:
+                fdids.add(self.atlases.fdid(piece.atlas) if piece.atlas else piece.fdid)
+            except MissingFile:
+                pass
+        self.source.files(fdid for fdid in fdids if fdid is not None)
+
+    def texture(self, piece: Piece) -> Image.Image:
+        """The whole texture (or atlas member) the piece draws some of."""
+        image = self.atlases.image(piece.atlas) if piece.atlas else self.source.image(piece.fdid)
+        return additive_to_alpha(image) if piece.additive else image
+
+    def name(self, piece: Piece) -> str:
+        """As the UI code names it (the atlas table has most names in lower case), with the suffix
+        of the copy drawn instead, if there is one."""
+        name = piece.name
+        if piece.atlas and self.atlas_suffix:
+            if self.atlases.member(piece.atlas)["CommittedName"].lower() == (piece.atlas + self.atlas_suffix).lower():
+                name += self.atlas_suffix
+        return name[len(HUD):] if name.lower().startswith(HUD.lower()) else name
 
 
 def additive_to_alpha(image: Image.Image) -> Image.Image:
@@ -277,7 +270,7 @@ def additive_to_alpha(image: Image.Image) -> Image.Image:
 
 
 def as_drawn(image: Image.Image, crop: tuple) -> Image.Image:
-    """The texture as a Classic frame draws it: cropped, mirrored if left > right, at on-screen size."""
+    """The texture as a frame draws it: cropped, mirrored if left > right, at on-screen size."""
     (left, right, top, bottom), size = crop
     width, height = image.size
     box = (round(min(left, right) * width), round(top * height), round(max(left, right) * width), round(bottom * height))
@@ -287,93 +280,85 @@ def as_drawn(image: Image.Image, crop: tuple) -> Image.Image:
     return piece.resize(size, Image.Resampling.LANCZOS)
 
 
-def draw_layers(atlases: Atlases, layers: list[Layer]) -> Image.Image:
-    width, height = TARGET_FRAME_SIZE
-    placed = []
-    for layer in layers:
-        image = atlases.image(layer.atlas)
-        if layer.topright is None:
-            x, y = (width - image.width) / 2, (height - image.height) / 2
-        else:
-            x, y = width + layer.topright[0] - image.width, -layer.topright[1]
-        placed.append((image, round(x), round(y)))
-    left = min(x for _, x, _ in placed)
-    top = min(y for _, _, y in placed)
-    right = max(x + image.width for image, x, _ in placed)
-    bottom = max(y + image.height for image, _, y in placed)
-    canvas = Image.new("RGBA", (right - left, bottom - top))
+def crop_of(piece: Piece) -> tuple:
+    return piece.coords, piece.size
+
+
+def draw(frame: FrameArt, textures: dict[Piece, Image.Image]) -> Image.Image:
+    """The frame's pieces, each where the frame puts it, in the order it draws them."""
+    left = min(piece.rect[0] for piece in frame.pieces)
+    top = min(piece.rect[1] for piece in frame.pieces)
+    placed = [(as_drawn(textures[piece], crop_of(piece)), round(piece.rect[0] - left), round(piece.rect[1] - top))
+              for piece in frame.pieces]
+    canvas = Image.new("RGBA", (max(x + image.width for image, x, _ in placed),
+                                max(y + image.height for image, _, y in placed)))
     for image, x, y in placed:
-        canvas.alpha_composite(image, (x - left, y - top))
+        canvas.alpha_composite(image, (x, y))
+    if frame.scale != 1:
+        canvas = canvas.resize((round(canvas.width * frame.scale), round(canvas.height * frame.scale)), Image.Resampling.LANCZOS)
     return canvas
-
-
-def atlas_caption(atlases: Atlases, layers: list[Layer]) -> str:
-    names = []
-    for layer in layers:
-        name = atlases.member(layer.atlas)["CommittedName"]
-        names.append(name[len(HUD):] if name.lower().startswith(HUD.lower()) else name)
-    return "\n+ ".join(names)
 
 
 @dataclass
 class Cell:
     image: Image.Image | None
     caption: str
-    texture: Image.Image | None = None  # the whole texture, for comparing against the addon's
+    texture: Image.Image | None = None  # the whole texture of the frame's own art, to compare with the addon's
+    crop: tuple | None = None           # how that texture is drawn: (coords, size)
     error: bool = False
+    frame: FrameArt | None = None
+    textures: dict = field(default_factory=dict)
 
 
-def classic_cells(source: Source) -> dict[str, Cell]:
-    art = ART["classic"]
-    files = source.files({texture.fdid for texture in art.values()})
+def main_piece(frame: FrameArt) -> Piece | None:
+    return next((piece for piece in frame.pieces if piece.key in MAIN_ART), None)
+
+
+def scale_note(frame: FrameArt) -> str:
+    return f"\n(the frame is at scale {frame.scale:g})" if frame.scale != 1 else ""
+
+
+def game_cells(loaded: Loaded, art: Art) -> dict[str, Cell]:
+    frames = {row: frame for row, frame in loaded.art.items() if isinstance(frame, FrameArt)}
+    art.prefetch(piece for frame in frames.values() for piece in frame.pieces)
     cells = {}
-    for row, texture in art.items():
-        try:
-            data = files[texture.fdid]
-            if isinstance(data, MissingFile):
-                raise data
-            image = decode(data)
-        except MissingFile as error:
-            cells[row] = Cell(None, f"{texture.name}\n{error}", error=True)
+    for row, frame in loaded.art.items():
+        if not isinstance(frame, FrameArt):
+            cells[row] = Cell(None, str(frame), error=True)
             continue
-        if row in ADDITIVE_ROWS:
-            image = additive_to_alpha(image)
-        cells[row] = Cell(as_drawn(image, texture.crop), texture.name, image)
-    return cells
-
-
-def atlas_cells(source: Source, style: str, suffix: str) -> dict[str, Cell]:
-    atlases = Atlases(source, suffix)
-    art = ART[style]
-    fdids = set()
-    for layers in art.values():
-        for layer in layers:
-            try:
-                fdids.add(atlases.fdid(layer.atlas))
-            except MissingFile:
-                pass
-    source.files(fdids)  # one pass over the build's file list for all of them
-
-    cells = {}
-    for row, layers in art.items():
         try:
-            cells[row] = Cell(draw_layers(atlases, layers), atlas_caption(atlases, layers))
+            textures = {piece: art.texture(piece) for piece in frame.pieces}
+            caption = "\n+ ".join(art.name(piece) for piece in frame.pieces) + scale_note(frame)
         except MissingFile as error:
-            cells[row] = Cell(None, str(error), error=True)
+            cells[row] = Cell(None, f"{', '.join(piece.name for piece in frame.pieces)}\n{error}", error=True)
+            continue
+        main = main_piece(frame)
+        compared = main is not None and main.atlas is None   # the Classic textures the addon replaces
+        cells[row] = Cell(draw(frame, textures), caption, textures[main] if compared else None,
+                          crop_of(main) if compared else None, frame=frame, textures=textures)
     return cells
 
 
-def mine_cells() -> dict[str, Cell]:
+def mine_cells(reference: dict[str, Cell] | None) -> dict[str, Cell]:
+    """The addon's textures, drawn in the frames of the first Classic version that could be read."""
     cells = {}
     for row, _ in ROWS:
         if row not in MINE:
             cells[row] = Cell(None, "not replaced:\nBlizzard's art is used")
             continue
-        file, crop, note = MINE[row]
-        image = Image.open(MY_TEXTURES / file).convert("RGBA")
-        if row in ADDITIVE_ROWS:
+        file, note = MINE[row]
+        theirs = reference.get(row) if reference else None
+        main = main_piece(theirs.frame) if theirs and theirs.frame else None
+        if main is None:
+            cells[row] = Cell(None, f"{file}\n(no Classic frame to draw it in)", error=True)
+            continue
+        image = decode((MY_TEXTURES / file).read_bytes())
+        if main.additive:
             image = additive_to_alpha(image)
-        cells[row] = Cell(as_drawn(image, crop), file + (f"\n({note})" if note else ""), image)
+        textures = {**theirs.textures, main: image}
+        caption = file + "".join(f"\n+ Blizzard's {piece.name}" for piece in theirs.frame.pieces if piece != main)
+        cells[row] = Cell(draw(theirs.frame, textures), caption + (f"\n({note})" if note else ""), image,
+                          crop_of(main), frame=theirs.frame, textures=textures)
     return cells
 
 
@@ -439,26 +424,31 @@ def to_drawn(box: tuple, texture_size: tuple, crop: tuple) -> tuple | None:
 
 
 def report_differences(columns: list, args: argparse.Namespace) -> None:
-    mine = columns[-1][2]
+    mine = next(cells for title, _, cells in columns if title == MINE_TITLE)
     print("\nWhere the addon's textures differ from Blizzard's")
+    reported = set()   # the PvP rows draw the same textures as the plain ones
     for row, label in ROWS:
-        if row not in MINE or mine[row].texture is None:
+        cell = mine.get(row)
+        if row not in MINE or cell is None or cell.texture is None or (MINE[row][0], cell.crop) in reported:
             continue
+        if MINE[row][1]:   # a texture the addon ships but doesn't draw: nothing in game to compare it with
+            continue
+        reported.add((MINE[row][0], cell.crop))
         counts = []
-        for title, _, cells in columns[:-1]:
+        for title, _, cells in columns:
             theirs = cells.get(row)
-            if theirs and theirs.texture is not None:
-                mask = changed_mask(theirs.texture, mine[row].texture, args.threshold)
+            if title != MINE_TITLE and theirs and theirs.texture is not None:
+                mask = changed_mask(theirs.texture, cell.texture, args.threshold)
                 counts.append((sum(1 for value in mask.getdata() if value), title, mask))
         if not counts:
             continue
         counts.sort(key=lambda item: item[0])
         changed, closest, mask = counts[0]
         others = ", ".join(f"{title} {count}" for count, title, _ in counts[1:])
-        print(f"{label} ({MINE[row][0]}): closest to {closest}, {changed} texture pixels differ"
+        print(f"{label.replace(chr(10), ' ')} ({MINE[row][0]}): closest to {closest}, {changed} texture pixels differ"
               + (f" (others: {others})" if others else ""))
         for count, box in changed_regions(mask, args.min_region):
-            drawn = to_drawn(box, mine[row].texture.size, MINE[row][1])
+            drawn = to_drawn(box, cell.texture.size, cell.crop)
             where = f"x {drawn[0]}-{drawn[2]}, y {drawn[1]}-{drawn[3]} on screen" if drawn else "outside the drawn area"
             print(f"    {count:5d} px  {where}  (texture x {box[0]}-{box[2]}, y {box[1]}-{box[3]})")
 
@@ -548,7 +538,7 @@ def compose(columns: list, scale: int) -> Image.Image:
     y = header_height
     for (row, label), row_height in zip(ROWS, row_heights):
         draw.line((PAD, y, width - PAD, y), fill=(48, 48, 48, 255))
-        draw.text((PAD, y + PAD), label, font=label_font, fill=(235, 235, 235, 255))
+        draw.multiline_text((PAD, y + PAD), label, font=label_font, fill=(235, 235, 235, 255), spacing=3)
         x = label_width
         for c, ((_, _, cells), col_width) in enumerate(zip(columns, col_widths)):
             top = y + PAD
@@ -566,7 +556,7 @@ def compose(columns: list, scale: int) -> Image.Image:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--wow-dir", type=Path, help="World of Warcraft folder (default: found on your drives)")
-    parser.add_argument("--no-download", action="store_true", help="don't use wago.tools for versions that aren't installed")
+    parser.add_argument("--no-download", action="store_true", help="don't use wago.tools or GitHub, only what's installed or cached")
     parser.add_argument("--scale", type=int, default=2, help="zoom factor for the sheet (default: 2)")
     parser.add_argument("--threshold", type=int, default=24, help="per-channel difference (0-255) that counts as changed (default: 24)")
     parser.add_argument("--min-region", type=int, default=12, help="smallest patch of changed pixels to report (default: 12)")
@@ -577,23 +567,32 @@ def main() -> None:
     wow_dir = args.wow_dir or wowfiles.find_wow_dir()
     install = wowfiles.LocalInstall(wow_dir) if wow_dir else None
     print(f"World of Warcraft folder: {wow_dir or 'not found (use --wow-dir)'}")
+    listfile = wowfiles.Listfile(CACHE_DIR, allow_download=not args.no_download)
 
     columns = []  # (title, subtitle, {row: Cell})
+    reference = None  # the first Classic version's cells, which the addon's textures are drawn in
     for variant in VARIANTS:
         source, subtitle = open_source(variant, install, not args.no_download)
         print(f"{variant.title}: {subtitle}")
+        flavor = unitframe_ui.FLAVORS[variant.flavor]
         cells = {}
         if source is not None:
+            art = Art(source, variant.atlas_suffix)
             try:
-                if variant.style == "classic":
-                    cells = classic_cells(source)
-                else:
-                    cells = atlas_cells(source, variant.style, variant.atlas_suffix)
+                loaded = unitframe_ui.read_frame_art(source.files, listfile, flavor, art.atlas_size)
+                print(f"    {loaded.toc}" + (f"; couldn't read {', '.join(loaded.unreadable)}" if loaded.unreadable else ""))
+                cells = game_cells(loaded, art)
             except (MissingFile, OSError) as error:
                 subtitle = f"{subtitle}: {error}"
                 print(f"    {error}")
+            for row, cell in cells.items():
+                if cell.error:
+                    print(f"    {row}: {cell.caption.replace(chr(10), ' ')}")
+        if reference is None and flavor.classic and cells:
+            reference = cells
         columns.append((variant.title, subtitle, cells))
-    columns.append((MINE_TITLE, "Textures/", mine_cells()))
+        if variant.title == MINE_AFTER:
+            columns.append((MINE_TITLE, "Textures/", mine_cells(reference)))
 
     mark_duplicates(columns)
     report_differences(columns, args)
