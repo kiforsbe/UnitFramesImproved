@@ -59,9 +59,11 @@ version/date into the TOC files, uploads it to the [CurseForge
 project](https://www.curseforge.com/wow/addons/unitframesimproved), and attaches the zip to a
 matching GitHub release using `CHANGELOG.md` as the release notes.
 
-Before tagging, refresh the art comparison the README shows. Commit everything else for the
-release, then run `python tools/compare_unitframe_art.py --publish` and check the sheet. Commit
-`docs/unitframe-art-comparison.png`, and tag that commit. [AGENTS.md](AGENTS.md) has the details.
+Before tagging, refresh the art comparison the README shows. With everything else committed, run
+`python tools/compare_unitframe_art.py --publish` and check the sheet. Then commit
+`docs/unitframe-art-comparison.png` together with the `CHANGELOG.md` update as the release commit,
+and tag that. `CHANGELOG.md` is written by hand. [AGENTS.md](AGENTS.md) has the full release
+checklist.
 
 It's manual-only for now: push a tag, then trigger the workflow from the Actions tab (Run
 workflow), picking that tag from the branch/tag dropdown. Requires a `CF_API_KEY` repository secret

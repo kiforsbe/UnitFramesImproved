@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   3.80.2 client). `_Wrath.toc` is the suffix Blizzard's own Wrath TOCs use. Without it, a Wrath
   client fell back to `UnitFramesImproved.toc` and its Retail styler. Wrath runs the Classic
   family's unit frames, so it loads the Classic styler like Vanilla, TBC and Mists.
+- README: "How It Looks" shows a sheet of Blizzard's unit frames next to UnitFramesImproved's, in
+  every supported client and situation (vehicle, PvP, elite, rare, boss...). It's redrawn for each
+  release.
+- `tools/`: Python art tools, never packaged.
+  - `compare_unitframe_art.py` draws that sheet by running the game's own UI code and the addon's.
+  - `blp.py` converts BLP textures to PNG and back.
+  - `export_base_textures.py` keeps local copies of the game's unit frame textures.
+
+### Fixed
+- The zip and the release notes now use the hand-written `CHANGELOG.md`, which `.pkgmeta` now names
+  as the changelog. Without that, the packager puts a generated list of commits in the zip in its
+  place, and uses that list as the CurseForge changelog and GitHub release notes.
 
 ## [4.1.0-universal] - 2026-09-28
 

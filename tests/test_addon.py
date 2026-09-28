@@ -75,6 +75,10 @@ class PackagingTests(unittest.TestCase):
         self.assertRegex(pkgmeta, r"(?m)^\s*-\s*tests\s*$")
         self.assertNotRegex(pkgmeta, r"(?m)^externals:")
 
+    def test_pkgmeta_uses_the_hand_written_changelog(self):
+        pkgmeta = (REPO_ROOT / ".pkgmeta").read_text(encoding="utf-8")
+        self.assertRegex(pkgmeta, r"(?m)^manual-changelog:\s*\n\s+filename:\s*CHANGELOG\.md\s*$")
+
     def test_repo_only_files_are_not_packaged(self):
         # docs/ holds the README's art comparison: on GitHub, but not in the addon.
         build = (REPO_ROOT / "build.ps1").read_text(encoding="utf-8")

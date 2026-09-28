@@ -3,6 +3,12 @@ package-as: UnitFramesImproved
 # No externals: the addon only uses Blizzard's own APIs (event frames, SlashCmdList, Settings), so
 # there's no Libs/ folder to fetch or embed any more.
 
+# CHANGELOG.md is written by hand. Without this, the packager writes a changelog of commits over it
+# in the zip, and uses that as the CurseForge changelog and the GitHub release notes.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 # Tracked files that shouldn't end up inside the shipped in-game addon folder. Anything
 # already gitignored (.claude/, .vscode/) never reaches the packager in the first place, so it
 # doesn't need listing here too.
