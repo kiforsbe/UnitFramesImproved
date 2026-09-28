@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.1.0-universal] - 2026-09-28
+
 ### Added
 - WoW Forever support: `UnitFramesImproved_Camelot.toc` (`## Interface: 16001`). Forever's game
   type is "Camelot" in Blizzard's UI code, and `_Camelot.toc` is the suffix both the client and the
@@ -150,7 +152,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2.0.0-retail] - 2022-10-29
 - Initial tagged release.
 
-[Unreleased]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.1-universal...HEAD
+[Unreleased]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.1.0-universal...HEAD
+[4.1.0-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.2-universal...4.1.0-universal
+[4.0.2-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.1-universal...4.0.2-universal
 [4.0.1-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/4.0.0-universal...4.0.1-universal
 [4.0.0-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/3.0.0-universal...4.0.0-universal
 [3.0.0-universal]: https://github.com/kiforsbe/UnitFramesImproved/compare/2.2.0-retail...3.0.0-universal
