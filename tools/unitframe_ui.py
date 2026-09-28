@@ -16,6 +16,7 @@ as in Lua. Text has no size here, so art anchored to a font string lands at the 
 
 from __future__ import annotations
 
+import posixpath
 import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass, field
@@ -65,25 +66,34 @@ class Shot:
     calls: tuple[str, ...] = ()     # run after the frame's OnLoad: its mixins' methods, or global functions
     classification: str = "normal"
     pvp: bool = False               # PvP flagged (Alliance), and too high level to show the level
+    host: str | None = None         # the frame whose code creates this one, when the XML doesn't
+    force: frozenset[str] = frozenset()   # shown even though nothing in the situation's code shows them
+    follow: frozenset[str] = frozenset()  # methods also followed when called as statements
+
+
+HIGH_LEVEL = frozenset({"highleveltexture"})   # shown by the level update, which isn't run
+STATUS = frozenset({"statustexture"})          # shown while resting or in combat
 
 
 def _target(classification: str = "normal", pvp: bool = False) -> Shot:
-    calls = ("CheckClassification",) + (("CheckFaction",) if pvp else ())
-    return Shot("TargetFrame", FRAME_ART | (PVP_ART if pvp else frozenset()), calls, classification, pvp)
+    # The frame's Update decides whether to check the classification (boss frames don't).
+    follow = frozenset({"CheckClassification"} | ({"CheckFaction"} if pvp else set()))
+    return Shot("TargetFrame", FRAME_ART | (PVP_ART if pvp else frozenset()), ("Update",), classification, pvp,
+                force=HIGH_LEVEL if pvp else frozenset(), follow=follow)
 
 
 SHOTS = {
     "player": Shot("PlayerFrame", FRAME_ART),
     "player_pvp": Shot("PlayerFrame", FRAME_ART | PVP_ART, ("PlayerFrame_UpdatePvPStatus",), pvp=True),
-    "status": Shot("PlayerFrame", frozenset({"statustexture"})),
+    "status": Shot("PlayerFrame", STATUS, force=STATUS),
     "target": _target(),
     "target_pvp": _target(pvp=True),
     "elite": _target("elite"),
     "rare": _target("rare"),
     "rareelite": _target("rareelite"),
     "worldboss": _target("worldboss"),
-    "tot": Shot("TargetFrameToT", FRAME_ART),
-    "boss": Shot("Boss1TargetFrame", FRAME_ART),
+    "tot": Shot("TargetFrameToT", FRAME_ART, host="TargetFrame"),
+    "boss": Shot("Boss1TargetFrame", FRAME_ART, ("Update",), "worldboss", follow=frozenset({"CheckClassification"})),
 }
 
 # Mainline shows the PvP flag through UnitFrameUtil, with the art in the build's PvPIndicatorStyle
@@ -131,20 +141,10 @@ class Loaded:
 def read_frame_art(get_files, listfile, flavor: Flavor, atlas_size) -> Loaded:
     """get_files(fdids) returns {fdid: bytes or MissingFile}; atlas_size(name) returns (width, height)."""
     toc, paths = _load_order(get_files, listfile, flavor)
-    fdids, unreadable = {}, []
-    for path in paths:
-        if UI_FILE.search(path):
-            try:
-                fdids[path] = listfile.fdid(UI_DIR + path)
-            except MissingFile:
-                unreadable.append(path)
-    data = get_files(list(fdids.values()))
+    files = UIFiles(get_files, listfile)
     xml, lua = [], []
-    for path, fdid in fdids.items():
-        content = data.get(fdid)
-        if not isinstance(content, bytes):
-            unreadable.append(path)
-        elif path.lower().endswith(".xml"):
+    for path, content in files.in_load_order([path for path in paths if UI_FILE.search(path)]):
+        if path.lower().endswith(".xml"):
             xml.append(content)
         else:
             lua.append(content.decode("utf-8", "replace"))
@@ -156,7 +156,72 @@ def read_frame_art(get_files, listfile, flavor: Flavor, atlas_size) -> Loaded:
             art[row] = _shot(ui, code, shot, listfile, atlas_size)
         except MissingFile as error:
             art[row] = error
-    return Loaded(toc, art, unreadable)
+    return Loaded(toc, art, files.unreadable)
+
+
+class UIFiles:
+    """The UI files a TOC lists, with the Lua and XML their XML pulls in (<Script file>, <Include
+    file>) where it does, as the client loads them."""
+
+    def __init__(self, get_files, listfile):
+        self.get_files, self.listfile = get_files, listfile
+        self.data: dict[str, bytes | None] = {}
+        self.unreadable: list[str] = []
+
+    def fetch(self, paths: list[str]) -> None:
+        fdids = {}
+        for path in dict.fromkeys(paths):
+            if path in self.data:
+                continue
+            try:
+                fdids[path] = self.listfile.fdid(UI_DIR + path)
+            except MissingFile:
+                self.data[path] = None
+        found = self.get_files(list(fdids.values())) if fdids else {}
+        for path, fdid in fdids.items():
+            content = found.get(fdid)
+            self.data[path] = content if isinstance(content, bytes) and content else None
+        self.unreadable += [path for path in paths if self.data.get(path) is None and path not in self.unreadable]
+
+    def includes(self, path: str) -> list[str]:
+        content = self.data.get(path)
+        if not content or not path.lower().endswith(".xml"):
+            return []
+        folder = path.rsplit("/", 1)[0] if "/" in path else ""
+        out = []
+        for match in re.finditer(rb'<(?:Script|Include)\s[^>]*\bfile="([^"]+)"', content):
+            file = match.group(1).decode("utf-8", "replace").replace("\\", "/")
+            if file.lower().startswith(UI_DIR.lower()):
+                file = file[len(UI_DIR):]
+            elif "/" not in file or not file.lower().startswith("interface/"):
+                file = posixpath.normpath(posixpath.join(folder, file))
+            else:
+                continue   # another addon's file
+            if UI_FILE.search(file):
+                out.append(file)
+        return out
+
+    def in_load_order(self, paths: list[str]) -> list[tuple[str, bytes]]:
+        self.fetch(paths)
+        while True:   # fetch what the XML includes, a level at a time
+            missing = [file for path in list(self.data) for file in self.includes(path) if file not in self.data]
+            if not missing:
+                break
+            self.fetch(missing)
+
+        ordered, seen = [], set()
+
+        def load(path: str) -> None:
+            if path in seen or self.data.get(path) is None:
+                return
+            seen.add(path)
+            for file in self.includes(path):
+                load(file)
+            ordered.append((path, self.data[path]))
+
+        for path in paths:
+            load(path)
+        return ordered
 
 
 def _load_order(get_files, listfile, flavor: Flavor) -> tuple[str, list[str]]:
@@ -171,7 +236,8 @@ def _load_order(get_files, listfile, flavor: Flavor) -> tuple[str, list[str]]:
     data = get_files(list(fdids.values()))
     for name in names:
         content = data.get(fdids.get(name))
-        if isinstance(content, bytes):
+        # Builds ship the other versions' TOCs as empty files.
+        if isinstance(content, bytes) and re.search(rb"^\s*##", content, re.M):
             allowed, files = parse_toc(content.decode("utf-8", "replace"), flavor)
             if allowed:
                 return name, files
@@ -203,15 +269,28 @@ def parse_toc(text: str, flavor: Flavor) -> tuple[bool, list[str]]:
 
 
 def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size) -> FrameArt:
-    root = ui.instance(shot.frame)
-    context = Context(lua, root, {
+    api = {
         "UnitClassification": shot.classification,
         "UnitIsBossMob": shot.classification == "worldboss",
         "UnitFactionGroup": "Alliance",
         "UnitIsPVP": shot.pvp,
         "UnitIsPVPFreeForAll": False,
         "UnitIsMercenary": False,
-    })
+        "C_PvP.GetHonorRewardInfo": None,   # no prestige portrait: the plain faction icon
+        "UnitExists": True,
+        "C_GameRules.IsGameRuleActive": False,   # e.g. TargetFrameDisabled would hide the frame
+    }
+    try:
+        root = ui.instance(shot.frame)
+    except MissingFile:
+        if not shot.host:
+            raise
+        host = ui.instance(shot.host)   # Retail's TargetFrame creates its ToT in Lua
+        Context(ui, lua, host, api).run_script("OnLoad")
+        root = host.find_name(shot.frame)
+        if root is None:
+            raise
+    context = Context(ui, lua, root, api, shot.follow)
     context.run_script("OnLoad")
     for name in shot.calls:
         context.call(name)
@@ -224,8 +303,7 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size) -> FrameArt:
         key = region.short_key(root)
         if key not in shot.keys or not (region.atlas or region.file or region.fdid):
             continue
-        forced = shot.pvp and key == "highleveltexture"
-        if not (forced and region.shown or region.visible()) or region.alpha == 0:
+        if not (key in shot.force or region.visible(root)) or region.alpha == 0:
             continue
         rect = layout.screen_rect(region)
         if rect is None or rect[2] - rect[0] < 0.5 or rect[3] - rect[1] < 0.5:
@@ -277,7 +355,10 @@ class Region:
         self.mixins: list[str] = []
         self.size: tuple[float | None, float | None] = (None, None)
         self.anchors: dict[str, Anchor] = {}
-        self.all_points = attrs.get("setAllPoints") == "true"
+        if attrs.get("setAllPoints") == "true":
+            self.all_points = True
+        else:   # None: a texture the XML gives no anchors fills its parent (Classic's ToT border); a frame doesn't
+            self.all_points = None if tag in REGION_TAGS else False
         self.coords = (0.0, 1.0, 0.0, 1.0)
         self.atlas = attrs.get("atlas")
         self.file = attrs.get("file")
@@ -319,9 +400,10 @@ class Region:
             elif child.tag == "Frame":
                 yield from child.drawable()
 
-    def visible(self) -> bool:
+    def visible(self, root: Region) -> bool:
+        """Shown, inside a frame that's shown (the frame being drawn itself doesn't count)."""
         region = self
-        while region is not None:
+        while region is not None and region is not root:
             if not region.shown:
                 return False
             region = region.parent
@@ -375,6 +457,18 @@ class UI:
                 return found
         raise MissingFile(f"no {name} in the UI files")
 
+    def create(self, kind, name, parent, template) -> Region:
+        """CreateFrame(kind, name, parent, template)."""
+        attrs = {"name": name} if isinstance(name, str) else {}
+        if isinstance(template, str):
+            attrs["inherits"] = template
+        element = ElementTree.Element(kind.capitalize() if isinstance(kind, str) else "Frame", attrs)
+        parent = parent if isinstance(parent, Region) else None
+        region = self._build(element, parent, parent.order[0] + 1 if parent else 0, (2, 0))
+        if parent is not None:
+            self._add(parent, region)
+        return region
+
     def _chain(self, element, seen=()) -> list:
         chain = []
         for name in (element.get("inherits") or "").split(","):
@@ -413,7 +507,10 @@ class UI:
                         region.fields[value.get("key")] = key_value(value)
                 elif child.tag == "Scripts":
                     for script in child:
-                        region.scripts[script.tag] = script
+                        inherit = (script.get("inherit") or "").lower()
+                        earlier = region.scripts.get(script.tag, [])
+                        region.scripts[script.tag] = (earlier + [script] if inherit == "append" else
+                                                      [script] + earlier if inherit == "prepend" else [script])
 
         for source in chain:
             for layers in source.findall("Layers"):
@@ -577,7 +674,8 @@ ASSIGNMENT = re.compile(r"(?m)(?:^|(?<=then)|(?<=else)|(?<=\bdo)|(?<=;))[ \t]*(l
                         r"((?:[A-Za-z_][\w.]*(?:\[[^\]\n]*\])*)(?:[ \t]*,[ \t]*[A-Za-z_][\w.]*)*)[ \t]*=(?!=)")
 LOCAL_DECLARATION = re.compile(r"(?m)^[ \t]*local[ \t]+([A-Za-z_][\w \t,]*?)[ \t]*;?[ \t]*$")
 CALL = re.compile(r"(?<![\w.:])[A-Za-z_]\w*(?:[ \t]*(?:[.:][ \t]*[A-Za-z_]\w*|\[[^\]\n]*\]))*[ \t]*\(")
-ONLOAD = re.compile(r"OnLoad", re.I)
+# Calls made as statements are only followed into the functions that build the frame.
+FOLLOWED = re.compile(r"OnLoad|Create", re.I)
 REGION_METHODS = {"SetAtlas", "SetTexture", "SetTexCoord", "SetPoint", "ClearAllPoints", "SetAllPoints", "Show",
                   "Hide", "SetShown", "SetScale", "SetSize", "SetWidth", "SetHeight", "SetAlpha", "GetName",
                   "IsShown", "GetParent"}
@@ -1069,8 +1167,10 @@ class Parser:
             return [UNKNOWN]
         if path in self.context.api:
             return [self.context.api[path]]
+        if path == "CreateFrame":
+            return [self.context.ui.create(*(args + [None] * 4)[:4])]
         function = self.lua.function(path)
-        if function is None or (statement and not ONLOAD.search(path)):
+        if function is None or (statement and not self.context.follows(path)):
             return [UNKNOWN]
         if function.method:   # Mixin.Method(self, ...)
             return self.lua.run(path, self.context, args[1:], args[0] if args else None)
@@ -1081,7 +1181,7 @@ class Parser:
             return [UNKNOWN]
         if name in REGION_METHODS:
             return region_method(value, name, args, texts, self.context)
-        if value is not self.context.root or (statement and not ONLOAD.search(name)):
+        if value is not self.context.root or (statement and not self.context.follows(name)):
             return [UNKNOWN]
         function = self.context.method(name)
         return self.lua.run(function, self.context, args, value) if function else [UNKNOWN]
@@ -1188,9 +1288,13 @@ def set_point(region: Region, args: list, context: Context) -> None:
 class Context:
     """One copy of a frame that code is running on, and the answers to the game API calls that matter."""
 
-    def __init__(self, lua: Lua, root: Region, api: dict):
-        self.lua, self.root, self.api = lua, root, api
+    def __init__(self, ui: UI, lua: Lua, root: Region, api: dict, follow: frozenset[str] = frozenset()):
+        self.ui, self.lua, self.root, self.api, self.extra_follow = ui, lua, root, api, follow
         self.stack: list[str] = []
+
+    def follows(self, name: str) -> bool:
+        """Whether a call made as a statement is run: the frame's building code, and the shot's own."""
+        return bool(FOLLOWED.search(name)) or name.rsplit(":", 1)[-1].rsplit(".", 1)[-1] in self.extra_follow
 
     def global_value(self, name: str, lua: Lua):
         if name == "_G":
@@ -1216,15 +1320,13 @@ class Context:
         return self.lua.run(name, self, [self.root]) if self.lua.has(name) else []
 
     def run_script(self, handler: str) -> None:
-        script = self.root.scripts.get(handler)
-        if script is None:
-            return
-        if script.get("method"):
-            self.call(script.get("method"))
-        elif script.get("function"):
-            self.lua.run(script.get("function"), self, [self.root])
-        elif (script.text or "").strip():
-            self.lua.run_snippet(script.text, self)
+        for script in self.root.scripts.get(handler, []):
+            if script.get("method"):
+                self.call(script.get("method"))
+            elif script.get("function"):
+                self.lua.run(script.get("function"), self, [self.root])
+            elif (script.text or "").strip():
+                self.lua.run_snippet(script.text, self)
 
     def pvp_indicator(self) -> None:
         style = self.lua.tables.get("PvPIndicatorStyle")
