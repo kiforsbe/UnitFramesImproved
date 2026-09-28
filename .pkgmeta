@@ -10,5 +10,6 @@ ignore:
   - build.ps1
   - deploy
   - tests
+  - tools
   - ARCHITECTURE.md
   - DEVELOPMENT.md
