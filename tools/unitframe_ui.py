@@ -12,6 +12,11 @@ from one function into another (at statement level, only the OnLoad chain is fol
 API calls that matter are answered for the situation being drawn (the unit's classification, PvP
 flag and faction); any other unknown value counts as true, and fields the code never set are nil,
 as in Lua. Text has no size here, so art anchored to a font string lands at the string's anchor.
+
+An addon can be loaded on top: the files its TOC for that version lists load after Blizzard's,
+and its handlers for the events the game fires when you log in and pick a target run after
+Blizzard's code, following every call into the addon's own functions. What that can't follow
+(hooks on Blizzard's functions, texture calls it doesn't model) is listed in Loaded.skipped.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import posixpath
 import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from wowfiles import MissingFile
 
@@ -102,6 +108,37 @@ PVP_ELEMENTS = ("GetPvPIndicatorElements", "PlayerFrame_GetPvPIndicatorElements"
 
 UI_FILE = re.compile(r"(?:^|/)(?:PlayerFrame|TargetFrame(?!Aura)|UnitFramePvPIndicatorStyle)\w*\.(?:xml|lua)$", re.I)
 
+# What the game fires at an addon when you log in and pick a target (with their arguments).
+ADDON_EVENTS = (("PLAYER_ENTERING_WORLD",), ("PLAYER_TARGET_CHANGED",), ("UNIT_TARGET", "target"))
+# Texture calls that change how it looks but aren't modelled: reported when the addon makes them.
+UNMODELED_TEXTURE_METHODS = {"SetVertexColor", "SetDesaturated", "SetDesaturation", "SetBlendMode", "SetDrawLayer",
+                             "SetRotation", "SetGradient", "SetMask", "AddMaskTexture"}
+
+
+@dataclass(frozen=True)
+class Addon:
+    """An addon on disk, loaded on top of Blizzard's frames the way the client loads it."""
+    name: str      # its folder's name, and the global table its event handlers are methods of
+    folder: Path
+
+    def load_order(self, flavor: Flavor) -> tuple[str, list[str]]:
+        """The TOC the client picks (its own suffixes first, then the plain one) and the files it lists."""
+        for name in [f"{self.name}_{suffix}.toc" for suffix in flavor.toc_suffixes] + [f"{self.name}.toc"]:
+            path = self.folder / name
+            if path.is_file():
+                allowed, files = parse_toc(path.read_text(encoding="utf-8"), flavor)
+                if allowed:
+                    return name, files
+        raise MissingFile(f"no {self.name} TOC for this version")
+
+    def local_file(self, path: str) -> Path | None:
+        """A texture path inside the addon's folder, as the file on disk."""
+        prefix = f"interface/addons/{self.name}/".lower()
+        normalised = path.replace("\\", "/")
+        if not normalised.lower().startswith(prefix):
+            return None
+        return self.folder / texture_file(normalised[len(prefix):])
+
 
 @dataclass(frozen=True)
 class Piece:
@@ -113,6 +150,7 @@ class Piece:
     coords: tuple[float, float, float, float]   # left, right, top, bottom; left > right is mirrored
     rect: tuple[float, float, float, float]     # left, top, right, bottom; 0,0 = the frame's top-left
     additive: bool
+    local_file: Path | None = None              # a texture from the addon's folder, not the game's
 
     @property
     def name(self) -> str:
@@ -136,10 +174,13 @@ class Loaded:
     toc: str
     art: dict[str, FrameArt | MissingFile]
     unreadable: list[str] = field(default_factory=list)   # UI files the TOC lists that couldn't be read
+    addon_toc: str | None = None                          # the addon's TOC, when one was loaded
+    skipped: list[str] = field(default_factory=list)      # what the addon did that couldn't be followed
 
 
-def read_frame_art(get_files, listfile, flavor: Flavor, atlas_size) -> Loaded:
-    """get_files(fdids) returns {fdid: bytes or MissingFile}; atlas_size(name) returns (width, height)."""
+def read_frame_art(get_files, listfile, flavor: Flavor, atlas_size, addon: Addon | None = None) -> Loaded:
+    """get_files(fdids) returns {fdid: bytes or MissingFile}; atlas_size(name) returns (width, height).
+    Raises MissingFile when the version has no TOC for Blizzard's unit frames, or for the addon."""
     toc, paths = _load_order(get_files, listfile, flavor)
     files = UIFiles(get_files, listfile)
     xml, lua = [], []
@@ -149,14 +190,24 @@ def read_frame_art(get_files, listfile, flavor: Flavor, atlas_size) -> Loaded:
         else:
             lua.append(content.decode("utf-8", "replace"))
 
-    ui, code = UI(xml), Lua(lua)
-    art = {}
+    addon_toc, blizzard_lua = None, len(lua)
+    if addon is not None:
+        addon_toc, addon_paths = addon.load_order(flavor)
+        for path in addon_paths:
+            content = (addon.folder / path).read_bytes()
+            if path.lower().endswith(".xml"):
+                xml.append(content)
+            elif path.lower().endswith(".lua"):
+                lua.append(content.decode("utf-8", "replace"))
+
+    ui, code = UI(xml), Lua(lua, addon_from=blizzard_lua)
+    art, skipped = {}, set()
     for row, shot in SHOTS.items():
         try:
-            art[row] = _shot(ui, code, shot, listfile, atlas_size)
+            art[row] = _shot(ui, code, shot, listfile, atlas_size, addon, skipped)
         except MissingFile as error:
             art[row] = error
-    return Loaded(toc, art, files.unreadable)
+    return Loaded(toc, art, files.unreadable, addon_toc, sorted(skipped))
 
 
 class UIFiles:
@@ -268,13 +319,15 @@ def parse_toc(text: str, flavor: Flavor) -> tuple[bool, list[str]]:
     return allowed, files
 
 
-def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size) -> FrameArt:
+def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size, addon: Addon | None = None,
+          skipped: set[str] | None = None) -> FrameArt:
     api = {
         "UnitClassification": shot.classification,
         "UnitIsBossMob": shot.classification == "worldboss",
-        "UnitFactionGroup": "Alliance",
+        "UnitFactionGroup": "Alliance" if shot.pvp else None,   # otherwise a mob, which has no faction
         "UnitIsPVP": shot.pvp,
         "UnitIsPVPFreeForAll": False,
+        "UnitIsEnemy": False,                # seen by an Alliance player
         "UnitIsMercenary": False,
         "C_PvP.GetHonorRewardInfo": None,   # no prestige portrait: the plain faction icon
         "UnitExists": True,
@@ -290,12 +343,16 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size) -> FrameArt:
         root = host.find_name(shot.frame)
         if root is None:
             raise
-    context = Context(ui, lua, root, api, shot.follow)
+    context = Context(ui, lua, root, api, shot.follow, addon)
     context.run_script("OnLoad")
     for name in shot.calls:
         context.call(name)
     if shot.pvp:
         context.pvp_indicator()
+    if addon is not None:
+        context.fire_addon_events()
+        if skipped is not None:
+            skipped |= context.skipped
 
     pieces = []
     layout = Layout(root, atlas_size)
@@ -309,9 +366,11 @@ def _shot(ui: UI, lua: Lua, shot: Shot, listfile, atlas_size) -> FrameArt:
         if rect is None or rect[2] - rect[0] < 0.5 or rect[3] - rect[1] < 0.5:
             continue
         fdid = region.fdid
-        if fdid is None and region.file:
+        local = addon.local_file(region.file) if addon is not None and region.file else None
+        if fdid is None and region.file and local is None:
             fdid = listfile.fdid(texture_file(region.file))
-        pieces.append((region.order, Piece(key, region.atlas, region.file, fdid, region.coords, rect, region.additive)))
+        pieces.append((region.order, Piece(key, region.atlas, region.file, fdid, region.coords, rect,
+                                           region.additive, local)))
     if not pieces:
         raise MissingFile(f"{shot.frame} draws none of its frame art")
     pieces.sort(key=lambda item: item[0])
@@ -790,13 +849,18 @@ class Function:
     params: list[str]
     method: bool          # defined with ":", so it has self
     events: list
+    addon: bool = False   # the addon's code, which is followed everywhere
 
 
 class Lua:
-    """The Lua files, in load order: their functions and file-level tables."""
+    """The Lua files, in load order: their functions and file-level tables. Files from addon_from
+    on are an addon's."""
 
-    def __init__(self, sources: list[str]):
-        self.files = [(text, blank_lua(text)) for text in sources]
+    def __init__(self, sources: list[str], addon_from: int | None = None):
+        self.addon_from = len(sources) if addon_from is None else addon_from
+        # One kind of line end, so the line-anchored patterns work on a Windows (CRLF) checkout too.
+        texts = [source.replace("\r\n", "\n").replace("\r", "\n") for source in sources]
+        self.files = [(text, blank_lua(text)) for text in texts]
         self.tables: dict[str, dict] = {}
         for text, code in self.files:
             self._read_tables(text, code)
@@ -826,7 +890,8 @@ class Lua:
     def _compile(self, name: str) -> Function | None:
         parts = re.split(r"[.:]", name)
         header = re.compile(r"\bfunction\s+" + r"\s*[.:]\s*".join(map(re.escape, parts)) + r"\s*\(([^)]*)\)")
-        for text, code in reversed(self.files):   # the last file loaded wins
+        for index in reversed(range(len(self.files))):   # the last file loaded wins
+            text, code = self.files[index]
             matches = list(header.finditer(code))
             if not matches:
                 continue
@@ -839,7 +904,7 @@ class Lua:
                     break
             params = [param.strip() for param in match.group(1).split(",") if param.strip()]
             method = ":" in match.group(0).split("(")[0]
-            return Function(params, method, compile_body(text, code, match.end(), stop))
+            return Function(params, method, compile_body(text, code, match.end(), stop), index >= self.addon_from)
         return None
 
     def run(self, name: str, context: Context, args: list, self_value=None) -> list:
@@ -1171,6 +1236,10 @@ class Parser:
             return [self.context.api[path]]
         if path == "CreateFrame":
             return [self.context.ui.create(*(args + [None] * 4)[:4])]
+        if path == "hooksecurefunc":   # the hook would run later, inside Blizzard's function
+            hooked = next((arg for arg in args if isinstance(arg, str)), "?")
+            self.context.skip(f"hooksecurefunc {hooked}")
+            return []
         function = self.lua.function(path)
         if function is None or (statement and not self.context.follows(path)):
             return [UNKNOWN]
@@ -1179,10 +1248,14 @@ class Parser:
         return self.lua.run(path, self.context, args)
 
     def method(self, value, name: str, args: list, texts: list[str], statement: bool) -> list:
+        if self.context.addon is not None and value is self.context.addon_table:
+            return self.lua.run(f"{self.context.addon.name}:{name}", self.context, args, value)
         if not isinstance(value, Region):
             return [UNKNOWN]
         if name in REGION_METHODS:
             return region_method(value, name, args, texts, self.context)
+        if name == "HookScript" or (value.tag == "Texture" and name in UNMODELED_TEXTURE_METHODS):
+            self.context.skip(f"{value.name or value.key or value.tag}:{name}")
         if value is not self.context.root or (statement and not self.context.follows(name)):
             return [UNKNOWN]
         function = self.context.method(name)
@@ -1290,17 +1363,40 @@ def set_point(region: Region, args: list, context: Context) -> None:
 class Context:
     """One copy of a frame that code is running on, and the answers to the game API calls that matter."""
 
-    def __init__(self, ui: UI, lua: Lua, root: Region, api: dict, follow: frozenset[str] = frozenset()):
+    def __init__(self, ui: UI, lua: Lua, root: Region, api: dict, follow: frozenset[str] = frozenset(),
+                 addon: Addon | None = None):
         self.ui, self.lua, self.root, self.api, self.extra_follow = ui, lua, root, api, follow
         self.stack: list[str] = []
+        self.addon, self.addon_table = addon, {}   # the addon's global table
+        self.addon_running = False
+        self.skipped: set[str] = set()
 
     def follows(self, name: str) -> bool:
-        """Whether a call made as a statement is run: the frame's building code, and the shot's own."""
+        """Whether a call made as a statement is run: the frame's building code, the shot's own,
+        and all of the addon's."""
+        function = self.lua.function(name)
+        if function is not None and function.addon:
+            return True
         return bool(FOLLOWED.search(name)) or name.rsplit(":", 1)[-1].rsplit(".", 1)[-1] in self.extra_follow
+
+    def skip(self, what: str) -> None:
+        if self.addon_running:
+            self.skipped.add(what)
+
+    def fire_addon_events(self) -> None:
+        """The addon's handlers for what the game fires when you log in and pick a target."""
+        self.addon_running = True
+        for event, *args in ADDON_EVENTS:
+            handler = f"{self.addon.name}:{event}"
+            if self.lua.has(handler):
+                self.lua.run(handler, self, list(args), self.addon_table)
+        self.addon_running = False
 
     def global_value(self, name: str, lua: Lua):
         if name == "_G":
             return GLOBALS
+        if self.addon is not None and name == self.addon.name:
+            return self.addon_table
         if name in lua.tables:
             return lua.tables[name]
         region = self.root.top().find_name(name)
