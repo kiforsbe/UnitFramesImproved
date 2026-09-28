@@ -5,3 +5,4 @@ Libs/
 deploy/
 docs/superpowers/
 .superpowers/
+__pycache__/

@@ -1,4 +1,4 @@
-## Interface: 11509
+## Interface: 16001
 
 ## Title: UnitFramesImproved
 ## Notes: Extends the Blizzard unitframes for better visuals, with a minimal-ish footprint.
@@ -15,5 +15,5 @@
 
 HelperFunctions.lua
 UnitFramesImproved.lua
-UnitFramesImproved_Classic.lua
+UnitFramesImproved_Retail.lua
 UnitFramesImproved_Options.lua

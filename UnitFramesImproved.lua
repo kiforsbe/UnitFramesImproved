@@ -1,23 +1,17 @@
--- Create the addon main instance (Ace-3.0)
-UnitFramesImproved = LibStub("AceAddon-3.0"):NewAddon("UnitFramesImproved", "AceConsole-3.0", "AceEvent-3.0")
-UnitFramesImproved:SetDefaultModuleLibraries("AceConsole-3.0", "AceEvent-3.0")
-UnitFramesImproved:SetDefaultModuleState(false)
+-- The addon's shared table. Kept global (rather than only the private `...` namespace table)
+-- because the per-client styler files and UnitFramesImproved_Options.lua all extend it, and it's
+-- handy for /dump while debugging.
+UnitFramesImproved = {}
 
--- Initialization of the addon, compatible with Ace-3.0
-function UnitFramesImproved:OnInitialize()
-  DebugPrint("OK", "INFO", 2, "Initializing...")
-
-  -- Register event handlers
-  self:RegisterEvent('PLAYER_TARGET_CHANGED', 'PLAYER_TARGET_CHANGED')
-  self:RegisterEvent('PLAYER_FOCUS_CHANGED', 'PLAYER_FOCUS_CHANGED')
-  self:RegisterEvent('UNIT_TARGET', "UNIT_TARGET")
-
-  -- Register chat slash-commands
-  self:RegisterChatCommand("ufi", "SlashCommand_Main")
-  self:RegisterChatCommand("unitframesimproved", "SlashCommand_Main")
-
-  DebugPrint("OK", "INFO", 2, "Initialized.")
-end
+-- Blizzard-native event handling: one private frame, with each event dispatched to the addon
+-- method of the same name. This used to go through AceAddon/AceEvent/AceConsole, which only ever
+-- wrapped exactly this and the SlashCmdList registration at the bottom of this file - see
+-- ARCHITECTURE.md. A private frame (rather than Blizzard's shared EventRegistry) keeps our
+-- handlers out of any state Blizzard's own code also iterates over.
+local eventFrame = CreateFrame("Frame")
+eventFrame:SetScript("OnEvent", function(_, event, ...)
+  UnitFramesImproved[event](UnitFramesImproved, ...)
+end)
 
 function UnitFramesImproved:LoadConfig()
   -- LoadConfig re-runs on every PLAYER_ENTERING_WORLD (fires on every zone/loading screen,
@@ -43,8 +37,13 @@ end
 
 -- Slash-command Handlers
 function UnitFramesImproved:SlashCommand_Main()
-  -- For now just output some info that settings for scale have been removed from previous major versions
-  dout("Welcome to UnitFramesImproved. Settings have been removed as this is part of standard UI.")
+  -- OpenOptions is defined by UnitFramesImproved_Options.lua, which leaves it unset on a client
+  -- without Blizzard's Settings API.
+  if (self.OpenOptions) then
+    self:OpenOptions()
+  else
+    dout("UnitFramesImproved: this client has no options panel to open.")
+  end
 end
 
 -- Event Handlers
@@ -58,7 +57,7 @@ function UnitFramesImproved:PLAYER_FOCUS_CHANGED()
   UnitFramesImproved:UpdateStatusBarColor(FocusFrame)
 end
 
-function UnitFramesImproved:UNIT_TARGET(self, unitTarget)
+function UnitFramesImproved:UNIT_TARGET(unitTarget)
   if unitTarget == "target" then
     UnitFramesImproved:Style_ToTFrame(TargetFrameToT)
     UnitFramesImproved:UpdateStatusBarColor(TargetFrameToT)
@@ -231,11 +230,28 @@ function UnitFramesImproved:SetFontSize(fontString, size)
 end
 
 -- Events
-UnitFramesImproved:RegisterEvent("PLAYER_ENTERING_WORLD", "LoadConfig")
+function UnitFramesImproved:PLAYER_ENTERING_WORLD()
+  self:LoadConfig()
+end
 
 -- Catch-up: LoadConfig's InCombatLockdown-guarded region creation (e.g. Style_TargetFrame's
 -- CreateStatusBarText fallback) can be skipped if PLAYER_ENTERING_WORLD or a target/focus
 -- change happens mid-combat. Re-running LoadConfig on leaving combat is safe to repeat -
 -- OffsetAnchor caches its own baseline and region creation is guarded by a nil check - so
 -- this just picks up anything that was skipped, without redoing/drifting anything that wasn't.
-UnitFramesImproved:RegisterEvent("PLAYER_REGEN_ENABLED", "LoadConfig")
+function UnitFramesImproved:PLAYER_REGEN_ENABLED()
+  self:LoadConfig()
+end
+
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
+eventFrame:RegisterEvent("UNIT_TARGET")
+
+-- Slash commands, via Blizzard's own SlashCmdList (replaces AceConsole's RegisterChatCommand).
+SLASH_UNITFRAMESIMPROVED1 = "/ufi"
+SLASH_UNITFRAMESIMPROVED2 = "/unitframesimproved"
+SlashCmdList["UNITFRAMESIMPROVED"] = function()
+  UnitFramesImproved:SlashCommand_Main()
+end

@@ -4,13 +4,10 @@
   dev/testing.
 
 .DESCRIPTION
-  The repo's Libs/ (LibStub, Ace3) are fetched by the real packager from .pkgmeta's SVN
-  externals at release time and are not committed here. This script fetches the same
-  externals itself over plain HTTP (repos.wowace.com serves its SVN tree over HTTP GET,
-  no svn client required), caches them in the gitignored Libs/ folder so repeat builds
-  are instant, then copies addon source + Libs into deploy\UnitFramesImproved (gitignored,
-  .pkgmeta-ignored) and stamps the @project-version@ / @project-date-iso@ tokens the
-  packager would otherwise fill in. It also zips that folder into
+  Copies the addon source into deploy\UnitFramesImproved (gitignored, .pkgmeta-ignored)
+  and stamps the @project-version@ / @project-date-iso@ tokens the packager would
+  otherwise fill in. The addon has no library externals (it only uses Blizzard's own
+  APIs), so there's nothing to fetch first. It also zips that folder into
   deploy\UnitFramesImproved-<version>.zip, in the same one-folder-at-the-root layout the
   real CurseForge packager produces, for manual testing/sharing without going through CI.
 
@@ -18,7 +15,7 @@
   opt in via -DeployToWow, -WowInstallPath, or -TargetPath, so a plain `.\build.ps1` is
   always safe to run without touching a live install. When one of those is given, the
   already-staged deploy\UnitFramesImproved folder is copied as-is into Interface\AddOns
-  under every _retail_ / _classic_ / _classic_era_ / _anniversary_ folder found (or into
+  under every _retail_ / _classic_ / _classic_era_ / _anniversary_ / _classic_beta_ folder found (or into
   -TargetPath directly) - it's a copy of the one build, not a second independent build.
 
 .PARAMETER DeployToWow
@@ -37,9 +34,6 @@
   _classic_era_ - e.g. 'E:\Blizzard\World of Warcraft'). Takes precedence over the
   UFI_WOW_PATH environment variable and auto-detection. Implies -DeployToWow.
 
-.PARAMETER RefreshLibs
-  Re-fetch Libs/ even if already cached (e.g. if wowace revs a library).
-
 .EXAMPLE
   .\build.ps1
   .\build.ps1 -DeployToWow
@@ -54,60 +48,11 @@
 param(
     [string]$TargetPath,
     [string]$WowInstallPath,
-    [switch]$DeployToWow,
-    [switch]$RefreshLibs
+    [switch]$DeployToWow
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = $PSScriptRoot
-$LibsCache = Join-Path $RepoRoot 'Libs'
-
-# Mirrors .pkgmeta's externals, plus CallbackHandler-1.0 (see .DESCRIPTION above).
-$Externals = [ordered]@{
-    'LibStub'             = 'https://repos.wowace.com/wow/libstub/tags/1.0'
-    'CallbackHandler-1.0' = 'https://repos.wowace.com/wow/ace3/trunk/CallbackHandler-1.0'
-    'AceAddon-3.0'        = 'https://repos.wowace.com/wow/ace3/trunk/AceAddon-3.0'
-    'AceConsole-3.0'      = 'https://repos.wowace.com/wow/ace3/trunk/AceConsole-3.0'
-    'AceEvent-3.0'        = 'https://repos.wowace.com/wow/ace3/trunk/AceEvent-3.0'
-}
-
-# WowAce's SVN host serves its tree over plain HTTP (mod_dav_svn autoindex), so a
-# directory listing is just <a href="name">name</a> per entry - subdirs end in "/".
-# Recursing over that is a lightweight stand-in for `svn export` without needing svn.
-function Get-SvnHttpExport {
-    param([string]$Url, [string]$Dest)
-
-    $dirUrl = $Url.TrimEnd('/') + '/'
-    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-
-    $response = Invoke-WebRequest -Uri $dirUrl -UseBasicParsing
-    $links = [regex]::Matches($response.Content, '<a href="([^"]+)">') | ForEach-Object { $_.Groups[1].Value }
-
-    foreach ($link in $links) {
-        if ($link -eq '../' -or $link -match '^https?://') { continue }  # parent link, or the "Powered by Apache Subversion" footer link
-
-        if ($link.EndsWith('/')) {
-            Get-SvnHttpExport -Url "$dirUrl$link" -Dest (Join-Path $Dest $link.TrimEnd('/'))
-        } else {
-            Invoke-WebRequest -Uri "$dirUrl$link" -OutFile (Join-Path $Dest $link) -UseBasicParsing
-        }
-    }
-}
-
-function Sync-Libs {
-    if ($RefreshLibs -and (Test-Path $LibsCache)) {
-        Remove-Item $LibsCache -Recurse -Force
-    }
-    if (Test-Path $LibsCache) {
-        return
-    }
-
-    Write-Host "Fetching Libs (one-time - cached in Libs/ for future builds)..." -ForegroundColor Cyan
-    foreach ($name in $Externals.Keys) {
-        Write-Host "  $name"
-        Get-SvnHttpExport -Url $Externals[$name] -Dest (Join-Path $LibsCache $name)
-    }
-}
 
 # Locates the WoW install root - the folder that directly contains _retail_ /
 # _classic_ / _classic_era_ - without any parameter or env var override.
@@ -154,13 +99,15 @@ function Find-WowInstallRoot {
     return $null
 }
 
-# _retail_/_classic_/_classic_era_/_anniversary_ are separate installs sharing one root;
-# deploy to every one that's actually present so all flavors stay in sync from one run.
+# _retail_/_classic_/_classic_era_/_anniversary_/_classic_beta_ are separate installs sharing
+# one root; deploy to every one that's actually present so all flavors stay in sync from one run.
+# _classic_beta_ is where the WoW Forever beta installs (it loads UnitFramesImproved_Camelot.toc).
 $Flavors = [ordered]@{
-    '_retail_'      = 'Retail'
-    '_classic_'     = 'Classic'
-    '_classic_era_' = 'Classic Era'
-    '_anniversary_' = 'TBC Anniversary'
+    '_retail_'       = 'Retail'
+    '_classic_'      = 'Classic'
+    '_classic_era_'  = 'Classic Era'
+    '_anniversary_'  = 'TBC Anniversary'
+    '_classic_beta_' = 'Classic Beta (WoW Forever)'
 }
 
 $DeployDir = Join-Path $RepoRoot 'deploy\UnitFramesImproved'
@@ -203,27 +150,36 @@ function Get-WowDeployTargets {
     }
 
     if ($targets.Count -eq 0) {
-        Write-Host "  no _retail_/_classic_/_classic_era_ folder found under '$root'" -ForegroundColor Yellow
+        Write-Host "  no _retail_/_classic_/_classic_era_/_anniversary_/_classic_beta_ folder found under '$root'" -ForegroundColor Yellow
     }
 
     return $targets
 }
 
-# What actually ships - source files only, no .git/.claude/.vscode/build.ps1/etc.
+# What actually ships - source files only, no .git/.claude/.vscode/build.ps1/tests/etc.
 $SourceItems = @(
     'HelperFunctions.lua',
     'UnitFramesImproved.lua',
     'UnitFramesImproved.toc',
     'UnitFramesImproved_Retail.lua',
     'UnitFramesImproved_Classic.lua',
+    'UnitFramesImproved_Options.lua',
     'UnitFramesImproved_Mists.toc',
     'UnitFramesImproved_Vanilla.toc',
     'UnitFramesImproved_TBC.toc',
+    'UnitFramesImproved_Camelot.toc',
     'Textures',
     'LICENSE.txt',
-    'LICENSE-ACE3.txt',
     'README.md',
     'CHANGELOG.md'
+)
+
+# Entries older builds of this addon shipped but current ones don't (the Ace3/LibStub libraries
+# and their license) - still recognized by Assert-SafeToWipe below, so an install deployed by an
+# older build can be replaced without tripping the unknown-entry guard.
+$LegacyItems = @(
+    'Libs',
+    'LICENSE-ACE3.txt'
 )
 
 # Guards the wipe in Deploy-Addon below: refuses unless the target both looks like a WoW
@@ -242,7 +198,7 @@ function Assert-SafeToWipe {
         throw "Refusing to wipe '$Target' - doesn't look like a WoW AddOns folder (expected it to end in '...\Interface\AddOns\UnitFramesImproved') or the local deploy folder ('$DeployDir')."
     }
 
-    $knownEntries = @($SourceItems) + 'Libs'
+    $knownEntries = @($SourceItems) + @($LegacyItems)
     $unexpected = Get-ChildItem $Target -Name | Where-Object { $_ -notin $knownEntries }
     if ($unexpected) {
         throw "Refusing to wipe '$Target' - it contains entries this script doesn't recognize as part of the addon: $($unexpected -join ', '). Remove them by hand first if that's intentional, in case they're not meant to be deleted."
@@ -267,10 +223,6 @@ function Deploy-Addon {
         if (-not (Test-Path $srcPath)) { continue }
         Copy-Item -Path $srcPath -Destination (Join-Path $Target $item) -Recurse -Force
     }
-
-    $libsTarget = Join-Path $Target 'Libs'
-    New-Item -ItemType Directory -Force -Path $libsTarget | Out-Null
-    Copy-Item -Path (Join-Path $LibsCache '*') -Destination $libsTarget -Recurse -Force
 
     # Stamp the tokens the real packager substitutes at release time.
     $version = git -C $RepoRoot describe --tags --always --dirty 2>$null
@@ -320,7 +272,6 @@ function Copy-StagedBuildTo {
     Write-Host "  version $script:BuildVersion" -ForegroundColor Green
 }
 
-Sync-Libs
 Deploy-Addon -Target $DeployDir
 New-DeployZip
 foreach ($target in (Get-WowDeployTargets)) {
