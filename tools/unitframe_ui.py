@@ -484,7 +484,9 @@ class UI:
             attrs.update(source.attrib)
             mixins += [mixin.strip() for mixin in (source.get("mixin") or "").split(",") if mixin.strip()]
         self._count += 1
-        region = Region(element.tag, attrs, parent, (level, *layer, self._count))
+        # Frames at one level draw one after another, as made, each all its layers: a texture sorts by its frame first.
+        frame = parent.order[1] if element.tag in REGION_TAGS else self._count
+        region = Region(element.tag, attrs, parent, (level, frame, *layer, self._count))
         region.mixins = list(dict.fromkeys(mixins))
         if attrs.get("name"):
             region.name = re.sub(r"\$parent", region.named_ancestor() or "", attrs["name"], flags=re.I)
